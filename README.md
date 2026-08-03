@@ -1,5 +1,7 @@
 # Vortex for Linux — Arch/AUR build recipe
 
+[![Upstream compatibility](https://github.com/Arkazzae/vortex-linux-aur/actions/workflows/upstream-compatibility.yml/badge.svg)](https://github.com/Arkazzae/vortex-linux-aur/actions/workflows/upstream-compatibility.yml)
+
 This repository contains only the Arch packaging and generic Linux compatibility
 patches required to build [Vortex](https://github.com/Nexus-Mods/Vortex). It does
 **not** redistribute or mirror the Vortex source tree. The `PKGBUILD` checks out
@@ -84,6 +86,30 @@ xdg-mime default com.nexusmods.vortex.desktop x-scheme-handler/nxm
 Builds are intentionally pinned to an exact upstream Vortex commit. The large
 build downloads the official source, Node dependencies, Electron, and the
 Microsoft Windows runtime components required by managed helper tools.
+
+## Upstream compatibility CI
+
+The `Upstream compatibility` GitHub Actions workflow checks the pinned Vortex
+revision for every patch or build-recipe change. Once a day it resolves the
+latest stable release published by Nexus Mods and then:
+
+1. fetches that exact upstream revision into a clean worktree;
+2. applies every patch listed in `PKGBUILD`, in package order;
+3. installs the Node.js and pnpm versions requested by that upstream release;
+4. runs every test file touched by the patch series;
+5. runs the renderer TypeScript typecheck.
+
+The workflow can also be started manually with a tag, branch or commit through
+`Actions → Upstream compatibility → Run workflow`. Scheduled failures create or
+update one tracking issue; a later successful scheduled run closes it.
+
+Run the fast patch applicability check locally with:
+
+```bash
+scripts/check-upstream-compatibility.sh --ref latest --keep
+```
+
+Use `--ref pinned` to check the commit currently packaged by `PKGBUILD`.
 
 ## Filesystem rule for deployment
 

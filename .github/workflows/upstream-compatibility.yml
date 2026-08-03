@@ -1,0 +1,159 @@
+name: Upstream compatibility
+
+on:
+  push:
+    paths:
+      - ".github/workflows/upstream-compatibility.yml"
+      - "scripts/**"
+      - "PKGBUILD"
+      - "*.patch"
+  pull_request:
+    paths:
+      - ".github/workflows/upstream-compatibility.yml"
+      - "scripts/**"
+      - "PKGBUILD"
+      - "*.patch"
+  schedule:
+    - cron: "23 5 * * *"
+      timezone: "Europe/Warsaw"
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Vortex tag, branch, commit, latest, or pinned"
+        required: true
+        default: "latest"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Patch and test Vortex
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      upstream_ref: ${{ steps.prepare.outputs.upstream_ref }}
+      upstream_commit: ${{ steps.prepare.outputs.upstream_commit }}
+      upstream_url: ${{ steps.prepare.outputs.upstream_url }}
+    steps:
+      - name: Check out compatibility repository
+        uses: actions/checkout@v6
+
+      - name: Select upstream revision and apply patches
+        id: prepare
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REQUESTED_REF: ${{ inputs.upstream_ref }}
+        run: |
+          if [[ -n "$REQUESTED_REF" ]]; then
+            upstream_ref="$REQUESTED_REF"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            upstream_ref="latest"
+          else
+            upstream_ref="pinned"
+          fi
+
+          scripts/check-upstream-compatibility.sh \
+            --ref "$upstream_ref" \
+            --worktree "$RUNNER_TEMP/vortex-upstream"
+
+      - name: Set up upstream Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.prepare.outputs.node_version }}
+          package-manager-cache: false
+
+      - name: Activate upstream pnpm version
+        working-directory: ${{ steps.prepare.outputs.worktree }}
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${{ steps.prepare.outputs.pnpm_version }}" --activate
+          node --version
+          pnpm --version
+
+      - name: Install upstream dependencies
+        working-directory: ${{ steps.prepare.outputs.worktree }}
+        env:
+          CI: "1"
+          HUSKY: "0"
+          VORTEX_SKIP_SUBMODULES: "1"
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          node scripts/create-env-file.mjs
+
+      - name: Run patch tests and renderer typecheck
+        run: scripts/run-upstream-tests.sh "${{ steps.prepare.outputs.worktree }}"
+
+  compatibility-issue:
+    name: Maintain compatibility issue
+    needs: compatibility
+    if: ${{ always() && github.event_name == 'schedule' && needs.compatibility.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: "[CI] Vortex upstream compatibility failed"
+      UPSTREAM_REF: ${{ needs.compatibility.outputs.upstream_ref }}
+      UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
+      UPSTREAM_URL: ${{ needs.compatibility.outputs.upstream_url }}
+      RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update failure issue
+        if: ${{ needs.compatibility.result == 'failure' }}
+        run: |
+          issue_number="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "\"$ISSUE_TITLE\" in:title" \
+            --json number,title \
+            --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
+
+          issue_body="$(mktemp)"
+          printf '%s\n' \
+            'The scheduled compatibility check against the latest stable Vortex release failed.' \
+            '' \
+            "- Upstream ref: \`${UPSTREAM_REF:-unresolved}\`" \
+            "- Upstream commit: \`${UPSTREAM_COMMIT:-unresolved}\`" \
+            "- Release: ${UPSTREAM_URL:-unresolved}" \
+            "- Workflow run: ${RUN_URL}" \
+            '' \
+            'The run log identifies the first patch, test, or typecheck that needs attention.' \
+            > "$issue_body"
+
+          if [[ -n "$issue_number" ]]; then
+            gh issue edit "$issue_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file "$issue_body"
+          else
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body-file "$issue_body"
+          fi
+
+      - name: Close recovered compatibility issue
+        if: ${{ needs.compatibility.result == 'success' }}
+        run: |
+          issue_number="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "\"$ISSUE_TITLE\" in:title" \
+            --json number,title \
+            --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
+
+          if [[ -n "$issue_number" ]]; then
+            gh issue close "$issue_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --reason completed \
+              --comment "Compatibility is restored for \`${UPSTREAM_REF}\`. [Passing run](${RUN_URL})."
+          fi
