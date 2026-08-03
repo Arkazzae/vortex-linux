@@ -25,6 +25,8 @@ support channel.
   `Running...`, blocks duplicate launches and resets after the game exits;
 - treats missing backups for optional game INI files as a no-op during purge,
   while preserving errors for real restore failures;
+- identifies hardlinks on native Linux by their exact filesystem device and
+  inode, so purge and disable/remove operations actually retract deployed files;
 - supplies side-by-side Windows Desktop .NET runtimes for managed helper tools;
 - adds safe fallbacks for extensions that rely on optional Windows APIs;
 - keeps genuinely broken third-party extension dependencies visible instead of
@@ -94,6 +96,7 @@ private download URLs.
 - `0005` — native Steam launch routing and Proton process tracking for full games
   on Linux.
 - `0006` — safe purge behavior for optional INI files that were never created.
+- `0007` — POSIX hardlink ownership detection and reliable native Linux purge.
 
 The unmodified application source and license are maintained by
 [Nexus Mods](https://github.com/Nexus-Mods/Vortex).
