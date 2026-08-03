@@ -19,6 +19,12 @@ support channel.
 - resolves executable and document paths without hard-coding individual games;
 - launches Windows-only helper tools through one isolated Wine prefix while the
   Vortex Electron application itself runs natively;
+- hands complete Steam game launches back to the native Steam client by AppID,
+  preserving Proton selection, launch options, DRM and the Steam Runtime;
+- tracks the delayed Steam/Proton process so the Play button changes to
+  `Running...`, blocks duplicate launches and resets after the game exits;
+- treats missing backups for optional game INI files as a no-op during purge,
+  while preserving errors for real restore failures;
 - supplies side-by-side Windows Desktop .NET runtimes for managed helper tools;
 - adds safe fallbacks for extensions that rely on optional Windows APIs;
 - keeps genuinely broken third-party extension dependencies visible instead of
@@ -85,6 +91,16 @@ private download URLs.
 - `0002` — portable path and executable discovery;
 - `0003` — volume, staging and deployment behavior;
 - `0004` — optional extension dependency handling.
+- `0005` — native Steam launch routing and Proton process tracking for full games
+  on Linux.
+- `0006` — safe purge behavior for optional INI files that were never created.
 
 The unmodified application source and license are maintained by
 [Nexus Mods](https://github.com/Nexus-Mods/Vortex).
+
+## License
+
+The packaging files and Linux compatibility patches in this repository
+are licensed under the GNU General Public License v3.0 only
+(`GPL-3.0-only`). Vortex itself remains licensed and maintained by
+Nexus Mods under its upstream terms. See [LICENSE](LICENSE).

@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.4.2
-pkgrel=1
+pkgrel=4
 pkgdesc="Native Linux build of Vortex with a generic compatibility layer"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux-aur"
@@ -62,6 +62,8 @@ _patches=(
   '0002-linux-path-and-executable-discovery.patch'
   '0003-linux-filesystem-and-deployment.patch'
   '0004-linux-extension-dependency-handling.patch'
+  '0005-linux-steam-game-launch.patch'
+  '0006-linux-optional-ini-purge.patch'
 )
 
 source=(
@@ -70,6 +72,7 @@ source=(
   'vortex.sh'
   'vortex.desktop'
   'README.md'
+  'LICENSE'
   "dotnet-runtime-${_dotnet6}-win-x64.zip::https://builds.dotnet.microsoft.com/dotnet/Runtime/${_dotnet6}/dotnet-runtime-${_dotnet6}-win-x64.zip"
   "dotnet-runtime-${_dotnet8}-win-x64.zip::https://builds.dotnet.microsoft.com/dotnet/Runtime/${_dotnet8}/dotnet-runtime-${_dotnet8}-win-x64.zip"
   "dotnet-runtime-${_dotnet10}-win-x64.zip::https://builds.dotnet.microsoft.com/dotnet/Runtime/${_dotnet10}/dotnet-runtime-${_dotnet10}-win-x64.zip"
@@ -91,9 +94,12 @@ sha512sums=(
   'd2e700f878af54324a745358dcb94a1913ff505426f29fbeab0634338d626ce2df622e1e4189b9c38dea08c978fbeff047c754879474e8dfbb45fb2d72a64966'
   '8ecc2099a487070e5a65db4df8c25fc78fbe51580e55d7a8a819db47322671622ee7bbb666874542c24c6c17deca223b009525b14c980f7c4f02c0ddcb674d64'
   '9e0565b79768f51f5cc924628035cb247f4e6a670d7c52fa0364289b9bac4bd6a6bddbf2f905ddde16b46616e70c1934ff87801e2e75e0fbc2b00a11d1074dc8'
+  '7200f121d2f6e83da147ca714d6364f99f8c9e122ed690cddb1ba0fb700d1190d23d279e6b9d04ecd2c9837cd8d531c4a2daa816af72a962abb7e41b9ef2c9b6'
+  '3e3a91316fa3cf05a0feaf825d3f4551ab08724f2de7fab3db958b6ab8220879554a9b1b383cfefd26b514c5bbe419299f822b41809a786c02c96e50f5e41dac'
   '816976ac2e8e92dcc66762235fc7d7cc72c7fb1273969236bed4fe49ec0cb5c9705157c64d47ef779f09513cdf9ba877b97238e3b286db7caa8d24be6a9aeca0'
   '9bf22572d72496096c30271f225814c1666430afa85bee5b4f971b173c4931751bbca3d012bff984c26b47346544655bb140a1dce68fd2f58718769fcc38e68b'
-  'f4d41e9f7cbef9796cb5605854a6963867449c15bf7fa3597ad47d4398729b3933fd778132275f6cabc9834699d6c55c3e4f3583c4fba8a007f8ae94b336fa23'
+  '22d1c4542db30ba89808416c8ada82056778bbb7084933f07699bbf8fd5bdfc2205bf77a4df0bb0bc47237818ba5ded14c37e6321cb906c516b8335ab27fd7e4'
+  '6792296df27f1dc2cce19cd11d842a7b415d613f3c4fe96a8a11bbab05a4b3d12a28846a7eee657ae6711da0398e3b77e8ea91cf0bbe4dc432d0dedd7a6a7394'
   '935db5c6cee19f2c016e67168bfae7b491044735de76c673abb3b125dd325fd5e779d7efe12ba80178d46689ae70a25e558a3fa846417d44c5f4ca256e7f4bf2'
   'e3f31d298a2b674b54c7fc89fb3f06d9645fc5879a54f2ebf2ea20e9ee7ae55f1bfe3284c1f90a591d6be2d6bcd251790ddc27771d65303e7a6a56d331df4632'
   '2161dfa1cf027cdc074de7195b5f206b17ebd829ae415b9e7c9ee5f06d3952b6583030022dbe0d6e9221b5c577c411d7cd5322241f6d2299d9c886641215699b'
@@ -164,7 +170,9 @@ package() {
     "$pkgdir/usr/share/applications/com.nexusmods.vortex.desktop"
   install -Dm644 assets/images/vortex.png \
     "$pkgdir/usr/share/icons/hicolor/256x256/apps/vortex.png"
-  install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+  install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/VORTEX-LICENSE.md"
+  install -Dm644 "$srcdir/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/PATCHES-GPL-3.0.txt"
   install -Dm644 "$srcdir/README.md" \
     "$pkgdir/usr/share/doc/$pkgname/README.md"
 }
