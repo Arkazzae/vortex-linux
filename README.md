@@ -16,7 +16,15 @@ support channel.
   nearest existing parent;
 - suggests a staging directory on the same mounted filesystem as the game,
   which is required for hardlink deployment;
+- makes the deployment `Fix` action apply that suggestion automatically when
+  the old staging directory is empty, while leaving non-empty directories to
+  Vortex's normal transfer workflow;
 - resolves executable and document paths without hard-coding individual games;
+- maps Windows user-profile storage into the matching Steam/Proton prefix,
+  including `Documents`, `AppData/Roaming`, `AppData/Local`, `AppData/LocalLow`
+  and `Saved Games`;
+- routes both asynchronous and synchronous extension filesystem calls through
+  the same compatibility resolver;
 - launches Windows-only helper tools through one isolated Wine prefix while the
   Vortex Electron application itself runs natively;
 - hands complete Steam game launches back to the native Steam client by AppID,
@@ -31,9 +39,31 @@ support channel.
 - adds safe fallbacks for extensions that rely on optional Windows APIs;
 - keeps genuinely broken third-party extension dependencies visible instead of
   hiding their errors.
+- reconstructs an active download record if a failed or retried game setup
+  removed its state before the transfer completed, preventing community
+  extensions from receiving a spurious `Unknown Download` error.
 
 The patches are platform-oriented. There are no per-game path lists or special
 cases in the compatibility layer.
+
+## Steam/Proton user profiles
+
+Windows games usually keep configuration and saves outside their installation
+directory. On Linux those files live in the game's Proton prefix under
+`steamapps/compatdata/<appid>/pfx/drive_c/users/<user>`. The compatibility layer
+searches all configured Steam libraries and maps an extension's standard
+Windows profile path to the prefix where the corresponding game or application
+directory already exists.
+
+The resolver deliberately does not fabricate INI files or select an unrelated
+prefix. Launch a newly installed game once so Proton and the game can create
+their real profile directories and defaults, then let Vortex manage it.
+
+Additional compatibility prefixes can be supplied through
+`VORTEX_COMPAT_PREFIXES` as a colon-separated list. The native placeholder
+roots can be overridden with `VORTEX_LINUX_DOCUMENTS`,
+`VORTEX_LINUX_APPDATA`, `VORTEX_LINUX_LOCAL_APPDATA`,
+`VORTEX_LINUX_LOCAL_LOW` and `VORTEX_LINUX_SAVED_GAMES`.
 
 ## Build and install
 
@@ -60,6 +90,9 @@ Microsoft Windows runtime components required by managed helper tools.
 Hardlinks cannot cross filesystem boundaries. Put the Vortex staging directory
 on the same mounted filesystem as the managed game. In Vortex, open
 `Settings → Mods` and use the suggested staging path after selecting a game.
+Fresh Linux configurations use this mode by default. The deployment `Fix`
+action can switch an empty staging directory automatically; if mods are already
+present, Vortex keeps the explicit transfer step so their files are not orphaned.
 
 The compatibility layer can detect the correct mount and can validate a target
 whose final directory has not been created yet. It cannot make two different
@@ -97,6 +130,11 @@ private download URLs.
   on Linux.
 - `0006` — safe purge behavior for optional INI files that were never created.
 - `0007` — POSIX hardlink ownership detection and reliable native Linux purge.
+- `0008` — generic Steam/Proton user-profile resolution for documents, AppData,
+  LocalLow and saved games across extension filesystem operations.
+- `0009` — filesystem-aware staging suggestions, Linux defaults and a safe
+  automatic repair for empty cross-filesystem staging directories.
+- `0010` — recovery of active download state across failed or retried game setup.
 
 The unmodified application source and license are maintained by
 [Nexus Mods](https://github.com/Nexus-Mods/Vortex).
