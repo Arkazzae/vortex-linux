@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/upstream-compatibility.yml"
       - "scripts/**"
+      - "appimage/**"
       - "PKGBUILD"
       - ".SRCINFO"
       - "*.patch"
@@ -19,6 +20,7 @@ on:
     paths:
       - ".github/workflows/upstream-compatibility.yml"
       - "scripts/**"
+      - "appimage/**"
       - "PKGBUILD"
       - ".SRCINFO"
       - "*.patch"
@@ -106,7 +108,7 @@ jobs:
         run: scripts/run-upstream-tests.sh "${{ steps.prepare.outputs.worktree }}"
 
   build-package:
-    name: Build installable Arch package
+    name: Build Linux release artifacts
     needs: compatibility
     if: >-
       ${{
@@ -127,6 +129,8 @@ jobs:
       package_version: ${{ steps.package.outputs.package_version }}
       package_archive: ${{ steps.package.outputs.package_archive }}
       checksum_file: ${{ steps.package.outputs.checksum_file }}
+      appimage_archive: ${{ steps.appimage.outputs.appimage_archive }}
+      appimage_checksum: ${{ steps.appimage.outputs.appimage_checksum }}
     steps:
       - name: Check out packaging repository
         uses: actions/checkout@v6
@@ -157,19 +161,30 @@ jobs:
             MAKEFLAGS=-j2 \
             scripts/build-arch-package.sh
 
-      - name: Upload package artifact
+      - name: Build AppImage
+        id: appimage
+        run: |
+          runuser --user builder -- env \
+            HOME=/home/builder \
+            XDG_CACHE_HOME=/home/builder/.cache \
+            scripts/build-appimage.sh \
+              "dist/${{ steps.package.outputs.package_archive }}"
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: vortex-linux-${{ steps.package.outputs.package_version }}
           path: |
             dist/${{ steps.package.outputs.package_archive }}
             dist/${{ steps.package.outputs.checksum_file }}
+            dist/${{ steps.appimage.outputs.appimage_archive }}
+            dist/${{ steps.appimage.outputs.appimage_checksum }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
 
   publish-package:
-    name: Publish Arch package release
+    name: Publish Linux release
     needs:
       - compatibility
       - build-package
@@ -183,37 +198,48 @@ jobs:
       PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
       PACKAGE_ARCHIVE: ${{ needs.build-package.outputs.package_archive }}
       CHECKSUM_FILE: ${{ needs.build-package.outputs.checksum_file }}
+      APPIMAGE_ARCHIVE: ${{ needs.build-package.outputs.appimage_archive }}
+      APPIMAGE_CHECKSUM: ${{ needs.build-package.outputs.appimage_checksum }}
       UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
     steps:
-      - name: Download package artifact
+      - name: Download release artifacts
         uses: actions/download-artifact@v5
         with:
           name: vortex-linux-${{ needs.build-package.outputs.package_version }}
           path: dist
 
-      - name: Verify downloaded package
+      - name: Verify downloaded artifacts
         working-directory: dist
-        run: sha256sum --check "$CHECKSUM_FILE"
+        run: sha256sum --check "$CHECKSUM_FILE" "$APPIMAGE_CHECKSUM"
 
       - name: Create or update versioned release
         id: release
         env:
-          RELEASE_TAG: arch-v${{ needs.build-package.outputs.package_version }}
+          RELEASE_TAG: v${{ needs.build-package.outputs.package_version }}
         run: |
           cat > release-notes.md <<EOF
-          Installable Arch Linux x86_64 package built after the Linux patch
-          compatibility suite passed.
+          Vortex for Linux, built after the compatibility suite passed.
 
-          - Package: \`vortex-linux ${PACKAGE_VERSION}\`
+          - Version: \`${PACKAGE_VERSION}\`
           - Upstream commit: \`${UPSTREAM_COMMIT}\`
           - Packaging source: https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}
           - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
-          Verify and install:
+          ## Arch Linux
 
           \`\`\`sh
           sha256sum --check ${CHECKSUM_FILE}
           sudo pacman -U ./${PACKAGE_ARCHIVE}
+          \`\`\`
+
+          ## Other x86_64 Linux distributions
+
+          Install Wine with your distribution's package manager, then:
+
+          \`\`\`sh
+          sha256sum --check ${APPIMAGE_CHECKSUM}
+          chmod +x ${APPIMAGE_ARCHIVE}
+          ./${APPIMAGE_ARCHIVE}
           \`\`\`
           EOF
 
@@ -221,20 +247,24 @@ jobs:
             gh release upload "$RELEASE_TAG" \
               "dist/$PACKAGE_ARCHIVE" \
               "dist/$CHECKSUM_FILE" \
+              "dist/$APPIMAGE_ARCHIVE" \
+              "dist/$APPIMAGE_CHECKSUM" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
             gh release edit "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "Vortex for Arch Linux ${PACKAGE_VERSION}" \
+              --title "Vortex for Linux ${PACKAGE_VERSION}" \
               --notes-file release-notes.md \
               --latest
           else
             gh release create "$RELEASE_TAG" \
               "dist/$PACKAGE_ARCHIVE" \
               "dist/$CHECKSUM_FILE" \
+              "dist/$APPIMAGE_ARCHIVE" \
+              "dist/$APPIMAGE_CHECKSUM" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "Vortex for Arch Linux ${PACKAGE_VERSION}" \
+              --title "Vortex for Linux ${PACKAGE_VERSION}" \
               --notes-file release-notes.md \
               --latest
           fi
@@ -244,7 +274,7 @@ jobs:
             --json url \
             --jq .url)"
           printf 'release_url=%s\n' "$release_url" >> "$GITHUB_OUTPUT"
-          printf '### Published package\n\n[%s](%s)\n' \
+          printf '### Published Linux release\n\n[%s](%s)\n' \
             "$RELEASE_TAG" "$release_url" >> "$GITHUB_STEP_SUMMARY"
 
   compatibility-issue:

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly PACKAGE_PATH="${1:?usage: build-appimage.sh PACKAGE [OUTPUT_DIRECTORY]}"
+readonly OUTPUT_DIRECTORY="${2:-${REPOSITORY_ROOT}/dist}"
+readonly APPIMAGETOOL_URL='https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage'
+readonly APPIMAGETOOL_SHA256='b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2'
+
+for command_name in bsdtar curl file install sha256sum; do
+  if ! command -v "$command_name" >/dev/null; then
+    printf 'Required build command is missing: %s\n' "$command_name" >&2
+    exit 2
+  fi
+done
+
+if [[ ! -f "$PACKAGE_PATH" ]]; then
+  printf 'Arch package was not found: %s\n' "$PACKAGE_PATH" >&2
+  exit 2
+fi
+
+package_info="$(bsdtar -xOf "$PACKAGE_PATH" .PKGINFO)"
+package_name="$(sed -n 's/^pkgname = //p' <<< "$package_info")"
+package_version="$(sed -n 's/^pkgver = //p' <<< "$package_info")"
+package_arch="$(sed -n 's/^arch = //p' <<< "$package_info")"
+
+if [[ "$package_name" != vortex-linux || -z "$package_version" || "$package_arch" != x86_64 ]]; then
+  printf 'Unsupported package metadata: %s %s %s\n' \
+    "$package_name" "$package_version" "$package_arch" >&2
+  exit 2
+fi
+
+work_directory="$(mktemp -d "${TMPDIR:-/tmp}/vortex-appimage.XXXXXX")"
+cleanup() {
+  rm -rf -- "$work_directory"
+}
+trap cleanup EXIT
+
+app_directory="$work_directory/Vortex.AppDir"
+tool_path="$work_directory/appimagetool-x86_64.AppImage"
+install -dm755 "$app_directory"
+
+bsdtar -xf "$PACKAGE_PATH" -C "$app_directory" \
+  opt/Vortex \
+  usr/share/applications/com.nexusmods.vortex.desktop \
+  usr/share/icons/hicolor/256x256/apps/vortex.png \
+  usr/share/licenses/vortex-linux
+
+install -m755 "$REPOSITORY_ROOT/appimage/AppRun" "$app_directory/AppRun"
+install -m644 \
+  "$app_directory/usr/share/icons/hicolor/256x256/apps/vortex.png" \
+  "$app_directory/vortex.png"
+ln -s vortex.png "$app_directory/.DirIcon"
+
+sed \
+  -e 's/^Exec=.*/Exec=AppRun %u/' \
+  -e 's/^X-AppImage-Version=.*/X-AppImage-Version='"$package_version"'/' \
+  "$app_directory/usr/share/applications/com.nexusmods.vortex.desktop" \
+  > "$app_directory/com.nexusmods.vortex.desktop"
+
+if ! grep -q '^X-AppImage-Version=' "$app_directory/com.nexusmods.vortex.desktop"; then
+  printf 'X-AppImage-Version=%s\n' "$package_version" \
+    >> "$app_directory/com.nexusmods.vortex.desktop"
+fi
+
+curl --fail --location --silent --show-error \
+  "$APPIMAGETOOL_URL" --output "$tool_path"
+printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tool_path" | sha256sum --check --status
+chmod 755 "$tool_path"
+
+install -dm755 "$OUTPUT_DIRECTORY"
+appimage_archive="Vortex-${package_version}-x86_64.AppImage"
+ARCH=x86_64 "$tool_path" --appimage-extract-and-run \
+  "$app_directory" "$OUTPUT_DIRECTORY/$appimage_archive"
+chmod 755 "$OUTPUT_DIRECTORY/$appimage_archive"
+
+if [[ "$(file -b "$OUTPUT_DIRECTORY/$appimage_archive")" != *'ELF 64-bit'* ]]; then
+  printf 'The generated AppImage is not an x86_64 ELF executable\n' >&2
+  exit 1
+fi
+
+(
+  cd "$OUTPUT_DIRECTORY"
+  sha256sum "$appimage_archive" > "${appimage_archive}.sha256"
+  sha256sum --check "${appimage_archive}.sha256"
+)
+
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  printf 'appimage_archive=%s\n' "$appimage_archive" >> "$GITHUB_OUTPUT"
+  printf 'appimage_checksum=%s.sha256\n' "$appimage_archive" >> "$GITHUB_OUTPUT"
+fi
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+### AppImage
+
+- Archive: \`${appimage_archive}\`
+- Size: \`$(du -h "$OUTPUT_DIRECTORY/$appimage_archive" | cut -f1)\`
+EOF
+fi
+
+printf 'Built AppImage: %s\n' "$OUTPUT_DIRECTORY/$appimage_archive"
