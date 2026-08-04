@@ -150,6 +150,7 @@ jobs:
       - name: Build Arch package
         id: package
         run: |
+          chown builder:builder "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
           runuser --user builder -- env \
             HOME=/home/builder \
             XDG_CACHE_HOME=/home/builder/.cache \
