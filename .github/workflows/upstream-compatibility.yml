@@ -2,17 +2,31 @@ name: Upstream compatibility
 
 on:
   push:
+    branches:
+      - "master"
     paths:
       - ".github/workflows/upstream-compatibility.yml"
       - "scripts/**"
       - "PKGBUILD"
+      - ".SRCINFO"
       - "*.patch"
+      - "vortex.install"
+      - "vortex.sh"
+      - "vortex.desktop"
+      - "README.md"
+      - "LICENSE"
   pull_request:
     paths:
       - ".github/workflows/upstream-compatibility.yml"
       - "scripts/**"
       - "PKGBUILD"
+      - ".SRCINFO"
       - "*.patch"
+      - "vortex.install"
+      - "vortex.sh"
+      - "vortex.desktop"
+      - "README.md"
+      - "LICENSE"
   schedule:
     - cron: "23 5 * * *"
       timezone: "Europe/Warsaw"
@@ -90,6 +104,147 @@ jobs:
 
       - name: Run patch tests and renderer typecheck
         run: scripts/run-upstream-tests.sh "${{ steps.prepare.outputs.worktree }}"
+
+  build-package:
+    name: Build installable Arch package
+    needs: compatibility
+    if: >-
+      ${{
+        needs.compatibility.result == 'success' &&
+        github.ref == 'refs/heads/master' &&
+        (
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
+        )
+      }}
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+      options: --user root
+    timeout-minutes: 90
+    outputs:
+      package_name: ${{ steps.package.outputs.package_name }}
+      package_version: ${{ steps.package.outputs.package_version }}
+      package_archive: ${{ steps.package.outputs.package_archive }}
+      checksum_file: ${{ steps.package.outputs.checksum_file }}
+    steps:
+      - name: Check out packaging repository
+        uses: actions/checkout@v6
+
+      - name: Install package dependencies
+        run: |
+          mapfile -t build_dependencies < <(
+            sed -nE 's/^\t(depends|makedepends) = ([^<>=: ]+).*$/\2/p' .SRCINFO |
+              sort -u
+          )
+          if ((${#build_dependencies[@]} == 0)); then
+            echo 'No package dependencies found in .SRCINFO' >&2
+            exit 1
+          fi
+
+          pacman -Syu --needed --noconfirm "${build_dependencies[@]}"
+          useradd --create-home --shell /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Build Arch package
+        id: package
+        run: |
+          runuser --user builder -- env \
+            HOME=/home/builder \
+            XDG_CACHE_HOME=/home/builder/.cache \
+            MAKEFLAGS=-j2 \
+            scripts/build-arch-package.sh
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vortex-linux-${{ steps.package.outputs.package_version }}
+          path: |
+            dist/${{ steps.package.outputs.package_archive }}
+            dist/${{ steps.package.outputs.checksum_file }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish-package:
+    name: Publish Arch package release
+    needs:
+      - compatibility
+      - build-package
+    if: ${{ needs.build-package.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
+      PACKAGE_ARCHIVE: ${{ needs.build-package.outputs.package_archive }}
+      CHECKSUM_FILE: ${{ needs.build-package.outputs.checksum_file }}
+      UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: vortex-linux-${{ needs.build-package.outputs.package_version }}
+          path: dist
+
+      - name: Verify downloaded package
+        working-directory: dist
+        run: sha256sum --check "$CHECKSUM_FILE"
+
+      - name: Create or update versioned release
+        id: release
+        env:
+          RELEASE_TAG: arch-v${{ needs.build-package.outputs.package_version }}
+        run: |
+          cat > release-notes.md <<EOF
+          Installable Arch Linux x86_64 package built after the Linux patch
+          compatibility suite passed.
+
+          - Package: \`vortex-linux ${PACKAGE_VERSION}\`
+          - Upstream commit: \`${UPSTREAM_COMMIT}\`
+          - Packaging source: https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}
+          - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Verify and install:
+
+          \`\`\`sh
+          sha256sum --check ${CHECKSUM_FILE}
+          sudo pacman -U ./${PACKAGE_ARCHIVE}
+          \`\`\`
+          EOF
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              "dist/$PACKAGE_ARCHIVE" \
+              "dist/$CHECKSUM_FILE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Vortex for Arch Linux ${PACKAGE_VERSION}" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/$PACKAGE_ARCHIVE" \
+              "dist/$CHECKSUM_FILE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Vortex for Arch Linux ${PACKAGE_VERSION}" \
+              --notes-file release-notes.md \
+              --latest
+          fi
+
+          release_url="$(gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json url \
+            --jq .url)"
+          printf 'release_url=%s\n' "$release_url" >> "$GITHUB_OUTPUT"
+          printf '### Published package\n\n[%s](%s)\n' \
+            "$RELEASE_TAG" "$release_url" >> "$GITHUB_STEP_SUMMARY"
 
   compatibility-issue:
     name: Maintain compatibility issue

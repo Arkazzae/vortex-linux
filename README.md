@@ -67,6 +67,23 @@ roots can be overridden with `VORTEX_LINUX_DOCUMENTS`,
 `VORTEX_LINUX_APPDATA`, `VORTEX_LINUX_LOCAL_APPDATA`,
 `VORTEX_LINUX_LOCAL_LOW` and `VORTEX_LINUX_SAVED_GAMES`.
 
+## Install the prebuilt Arch package
+
+Every packaged revision that passes the compatibility suite on `master` is
+built in a clean Arch Linux container and published under
+[GitHub Releases](https://github.com/Arkazzae/vortex-linux-aur/releases). Each
+release contains the installable `.pkg.tar.zst` archive and its SHA-256 file.
+
+After downloading both files, verify and install the package with:
+
+```sh
+sha256sum --check vortex-linux-*.pkg.tar.zst.sha256
+sudo pacman -U ./vortex-linux-*.pkg.tar.zst
+```
+
+The binary package targets current Arch Linux `x86_64`. Building from the
+recipe remains available for Arch derivatives or customized environments.
+
 ## Build and install
 
 On Arch Linux or an Arch derivative:
@@ -98,6 +115,12 @@ latest stable release published by Nexus Mods and then:
 3. installs the Node.js and pnpm versions requested by that upstream release;
 4. runs every test file touched by the patch series;
 5. runs the renderer TypeScript typecheck.
+
+For a change pushed to `master`, a successful check of the revision pinned in
+`PKGBUILD` additionally builds the Arch package, uploads a workflow artifact and
+publishes a versioned GitHub Release. The scheduled `latest` check does not ship
+an uncommitted upstream revision; a new Vortex release is packaged after its
+version and exact commit are recorded in `PKGBUILD`.
 
 The workflow can also be started manually with a tag, branch or commit through
 `Actions → Upstream compatibility → Run workflow`. Scheduled failures create or
