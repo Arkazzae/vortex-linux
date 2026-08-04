@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.4.2
-pkgrel=8
+pkgrel=9
 pkgdesc="Native Linux build of Vortex with a generic compatibility layer"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux-aur"
@@ -149,7 +149,7 @@ build() {
   # Always package into a fresh, explicitly scoped directory.
   rm -rf "$srcdir/vortex/dist/linux-unpacked"
   cd src/main/dist
-  pnpm exec electron-builder \
+  ./node_modules/.bin/electron-builder \
     --config ./electron-builder.config.json \
     --publish never \
     --linux dir \

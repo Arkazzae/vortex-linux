@@ -1,7 +1,7 @@
 pkgbase = vortex-linux
 	pkgdesc = Native Linux build of Vortex with a generic compatibility layer
 	pkgver = 2.4.2
-	pkgrel = 8
+	pkgrel = 9
 	url = https://github.com/Arkazzae/vortex-linux-aur
 	install = vortex.install
 	arch = x86_64
