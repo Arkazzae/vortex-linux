@@ -2,33 +2,38 @@
 
 [![Build status](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml/badge.svg)](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml)
 
-Vortex is still a Windows-first application. This repository contains the
-build recipe and patches needed to run it as a native Linux application. Ready
-builds are available as an Arch package and as an AppImage for other x86_64
-Linux distributions.
+[Vortex](https://www.nexusmods.com/about/vortex/) is the mod manager from Nexus Mods — the one most people use for Skyrim, Fallout, Starfield, Baldur's Gate 3 and a few hundred other games. It's an Electron app, so it *technically* starts on Linux. Then it immediately falls apart: it can't find your Steam library, it writes saves and configs to the wrong place instead of into the Proton prefix, it can't launch the game, it can't run the Windows helper tools mods depend on, and hardlink deployment leaves junk behind when you purge.
 
-The Vortex source is fetched from the official Nexus Mods repository during the
-build. It is not copied or maintained here. This is an independent community
-project and is not an official Nexus Mods release.
+The usual workaround is running Vortex itself inside a Wine prefix, which is slow, fragile and annoying to set up.
 
-## Download
+This repo does the other thing: it patches Vortex to actually understand Linux, and builds it as a native app.
 
-Open the [latest release](https://github.com/Arkazzae/vortex-linux/releases/latest)
-and download the format you need. Each file has a matching `.sha256` checksum.
+## What it does
 
-### Arch Linux
+- Finds your Steam libraries and Proton prefixes
+- Maps `Documents` / `AppData` into the right prefix, so mods and saves land where the game actually looks
+- Launches games through Steam
+- Runs Windows modding tools through Wine
+- Deploys and purges hardlinked mods without leaving stale files behind
 
-Download the `.pkg.tar.zst` file and its checksum, then run:
+These are general Linux fixes, not per-game hacks. Game-specific Vortex extensions can still carry their own Windows-only assumptions, so not every supported game is guaranteed to work — but the base is sane now.
+
+Nothing from Vortex is vendored here. The build pulls the official source from Nexus Mods and applies the patches on top. This is a community project, not an official Nexus Mods release.
+
+## Install
+
+Grab the [latest release](https://github.com/Arkazzae/vortex-linux/releases/latest). Every file ships with a `.sha256` next to it.
+
+### Arch
 
 ```sh
 sha256sum --check vortex-linux-*.pkg.tar.zst.sha256
 sudo pacman -U ./vortex-linux-*.pkg.tar.zst
 ```
 
-### Other distributions
+### Everything else (AppImage)
 
-Install Wine from your distribution's package manager. Download the AppImage
-and its checksum, then run:
+Install Wine from your package manager first, then:
 
 ```sh
 sha256sum --check Vortex-*.AppImage.sha256
@@ -36,50 +41,29 @@ chmod +x Vortex-*.AppImage
 ./Vortex-*.AppImage
 ```
 
-The AppImage contains Vortex, the Linux .NET 9 runtime required by its startup
-probe, and the Windows .NET runtimes used by modding tools. A system-wide .NET
-installation is not required. Wine remains a system requirement. On a system
-without FUSE 2, start it with:
+The AppImage bundles the Linux .NET 9 runtime Vortex probes for at startup, plus the Windows .NET runtimes modding tools need — you don't need .NET installed system-wide. Wine you do need.
+
+No FUSE 2 on your system? Run it as:
 
 ```sh
 ./Vortex-*.AppImage --appimage-extract-and-run
 ```
 
-AppImages do not register themselves in the application menu or as the handler
-for `nxm://` links. AppImageLauncher can do that, or you can create a desktop
-entry manually.
+AppImages don't add themselves to your app menu or register as the `nxm://` handler. AppImageLauncher handles that, or write a desktop entry yourself.
 
-## What is fixed
+## Before you add your first game
 
-The patches replace Windows-only path, filesystem and process handling with
-Linux equivalents. Vortex can find Steam libraries and Proton prefixes, map
-Documents and AppData to the correct prefix, launch games through Steam, run
-Windows helper tools through Wine, and deploy or purge hardlinked mods without
-leaving stale files behind.
+**Launch the game once through Steam.** Proton and the game create their real config and save directories on that first run; if you point Vortex at a prefix that doesn't exist yet, nothing will line up.
 
-The changes are shared Linux fixes, not a list of exceptions for individual
-games. Game-specific Vortex extensions can still have their own Windows-only
-assumptions, so not every one of the hundreds of supported games is guaranteed
-to work.
+**Keep staging and the game on the same filesystem.** Hardlinks can't cross filesystems. Vortex suggests a good folder under `Settings → Mods`. If you already have mods in an old staging folder, use Vortex's transfer flow — don't move or delete it by hand.
 
-## Before managing a game
-
-Run the game once through Steam first. Proton and the game need that first run
-to create their real configuration and save directories.
-
-Hardlink deployment also requires the staging folder and the game to be on the
-same filesystem. Vortex suggests a suitable folder in `Settings → Mods`. If an
-old staging folder already contains mods, use Vortex's transfer flow instead of
-moving or deleting it by hand.
-
-Extra compatibility prefixes can be supplied as a colon-separated list in
-`VORTEX_COMPAT_PREFIXES`. The default Wine prefix for helper tools is:
+If you keep extra compatibility prefixes around, list them colon-separated in `VORTEX_COMPAT_PREFIXES`. The Wine prefix used for helper tools defaults to:
 
 ```text
 ${XDG_DATA_HOME:-$HOME/.local/share}/vortex-linux/wineprefix
 ```
 
-## Build it yourself on Arch
+## Building from source (Arch)
 
 ```sh
 git clone https://github.com/Arkazzae/vortex-linux.git
@@ -87,42 +71,30 @@ cd vortex-linux
 makepkg -si
 ```
 
-The build is pinned to an exact upstream Vortex commit. It downloads the
-official source, Node dependencies, Electron and the required Microsoft runtime
-files, so the first build is large.
+The build is pinned to an exact upstream Vortex commit and downloads the source, Node dependencies, Electron and the Microsoft runtime files. First build is a big one.
 
-## Compatibility checks
+## How it's tested
 
-GitHub Actions applies every patch, runs the affected tests and typechecks the
-renderer. A successful build from `master` produces both release formats and
-publishes them together. A daily check also tests the latest upstream Vortex
-release; it reports breakage but does not publish code that has not yet been
-pinned in the build recipe.
+CI applies every patch, runs the affected tests and typechecks the renderer. Builds from `master` produce both release formats and publish them together. A daily job also tests the newest upstream Vortex release — it reports breakage, but won't publish anything that isn't pinned in the PKGBUILD yet.
 
-Before publication, the AppImage is also started in a fresh Ubuntu container
-that has Wine and the desktop libraries but no system .NET installation. Run
-the same smoke test locally with Docker:
+Before release, the AppImage is booted in a clean Ubuntu container with Wine and the desktop libraries but no system .NET. You can run the same check locally:
 
 ```sh
 scripts/test-appimage.sh dist/Vortex-*.AppImage
 ```
 
-To check a new upstream release locally:
+And test a new upstream release:
 
 ```sh
 scripts/check-upstream-compatibility.sh --ref latest --keep
 ```
 
-Use `--ref pinned` to test the version currently listed in `PKGBUILD`.
+`--ref pinned` tests whatever version `PKGBUILD` currently points at.
 
-## Reporting problems
+## Something broken?
 
-Include the game, store, installation path, steps to reproduce and the relevant
-part of `~/.config/Vortex/vortex.log`. Remove Nexus tokens and private download
-links before posting a log.
+Open an issue with the game, the store, where it's installed, how to reproduce it, and the relevant chunk of `~/.config/Vortex/vortex.log`. Scrub your Nexus tokens and private download links out of the log first.
 
 ## License
 
-The build files and Linux patches in this repository are licensed under
-GPL-3.0-only. Vortex itself remains under the upstream Nexus Mods license. See
-[LICENSE](LICENSE).
+The build files and Linux patches here are GPL-3.0-only. Vortex itself stays under the upstream Nexus Mods license. See [LICENSE](LICENSE).
