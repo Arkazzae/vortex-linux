@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.4.2
-pkgrel=10
+pkgrel=11
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -40,6 +40,7 @@ makedepends=(
   'git'
   'nodejs-lts-krypton'
   'npm'
+  'patchelf'
   'pnpm'
   'python'
   'python-setuptools'
@@ -105,7 +106,7 @@ sha512sums=(
   'a6a840e107750d26062f976e08a077198152a9dbf2a5ae22340ed842bd33d23ba0c8b875375c4676051bfbc56dfd2858f39dc0c04d33f22e55ce2917167d665d'
   '6c1324e03fa2cf56798511d15d034fd5368dde10a170dc515cf303ae8dd8950e03b9a9365b929a07de1d145d1153588081a276e18b03888ba370b9bbc3988f0a'
   '4889fd282fdab0dbef4e6d7b0f1f1afc07f25e799c77df910ee88bf0733f1cab84f56054618e6af9326033e71a9b0250be111a41b3b7ddf801cdc8273ebd3c51'
-  '816976ac2e8e92dcc66762235fc7d7cc72c7fb1273969236bed4fe49ec0cb5c9705157c64d47ef779f09513cdf9ba877b97238e3b286db7caa8d24be6a9aeca0'
+  '73db679d526b6657b454ae4e464f8adc5ee503630648f160877ef88e8fce2d48c9272687f4bf49a60e5adf4bee36b0abf06c502116c0a674f8648a8833dc38b2'
   '9bf22572d72496096c30271f225814c1666430afa85bee5b4f971b173c4931751bbca3d012bff984c26b47346544655bb140a1dce68fd2f58718769fcc38e68b'
   '491ecfc733439142fd0dd814aa1645b98e1c70e0e01f082401df994eaf0d32cb573f84604c228ab2fbd39997ffa507a28074a597664c4441831dd55b535b4fa5'
   '6792296df27f1dc2cce19cd11d842a7b415d613f3c4fe96a8a11bbab05a4b3d12a28846a7eee657ae6711da0398e3b77e8ea91cf0bbe4dc432d0dedd7a6a7394'
@@ -162,6 +163,22 @@ package() {
 
   install -dm755 "$pkgdir/opt/Vortex"
   cp -a dist/linux-unpacked/. "$pkgdir/opt/Vortex/"
+
+  # The native FOMOD addon is built with an absolute RUNPATH pointing at the
+  # build tree. Make the packaged addon relocatable so it can find the
+  # co-located NativeAOT library after installation and inside an AppImage.
+  local fomod_release_dir="$pkgdir/opt/Vortex/resources/app.asar.unpacked/node_modules/@nexusmods/fomod-installer-native/build/Release"
+  local fomod_node="$fomod_release_dir/modinstaller.node"
+  local fomod_library="$fomod_release_dir/ModInstaller.Native.so"
+  if [[ ! -f "$fomod_node" || ! -f "$fomod_library" ]]; then
+    printf 'Native FOMOD runtime files are missing from the Electron output\n' >&2
+    return 1
+  fi
+  patchelf --set-rpath '$ORIGIN' "$fomod_node"
+  if [[ "$(patchelf --print-rpath "$fomod_node")" != '$ORIGIN' ]]; then
+    printf 'Unable to make the native FOMOD addon relocatable\n' >&2
+    return 1
+  fi
 
   install -dm755 "$pkgdir/opt/Vortex/dotnet-win-x64"
   local runtime_version

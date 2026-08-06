@@ -12,7 +12,7 @@ readonly DOTNET_RUNTIME_VERSION='9.0.18'
 readonly DOTNET_RUNTIME_URL="https://builds.dotnet.microsoft.com/dotnet/Runtime/${DOTNET_RUNTIME_VERSION}/dotnet-runtime-${DOTNET_RUNTIME_VERSION}-linux-x64.tar.gz"
 readonly DOTNET_RUNTIME_SHA512='97eb89a5a3781b9761e2a850996912ae81b96996089c78abcebbc441113457088bfcbd7cf1fa97d3036f7ac8fe22c7d30e043e93ecafc910f07b73317c73bad5'
 
-for command_name in bsdtar curl file install sha256sum sha512sum; do
+for command_name in bsdtar curl file install ldd patchelf sha256sum sha512sum; do
   if ! command -v "$command_name" >/dev/null; then
     printf 'Required build command is missing: %s\n' "$command_name" >&2
     exit 2
@@ -51,6 +51,24 @@ bsdtar -xf "$PACKAGE_PATH" -C "$app_directory" \
   usr/share/applications/com.nexusmods.vortex.desktop \
   usr/share/icons/hicolor/256x256/apps/vortex.png \
   usr/share/licenses/vortex-linux
+
+fomod_release_directory="$app_directory/opt/Vortex/resources/app.asar.unpacked/node_modules/@nexusmods/fomod-installer-native/build/Release"
+fomod_node="$fomod_release_directory/modinstaller.node"
+fomod_library="$fomod_release_directory/ModInstaller.Native.so"
+if [[ ! -f "$fomod_node" || ! -f "$fomod_library" ]]; then
+  printf 'The package is missing the native FOMOD runtime files\n' >&2
+  exit 1
+fi
+if [[ "$(patchelf --print-rpath "$fomod_node")" != '$ORIGIN' ]]; then
+  printf 'The native FOMOD addon is not relocatable\n' >&2
+  exit 1
+fi
+fomod_dependencies="$(ldd "$fomod_node")"
+if grep -Fq 'not found' <<< "$fomod_dependencies"; then
+  printf 'The native FOMOD addon has unresolved dependencies:\n%s\n' \
+    "$fomod_dependencies" >&2
+  exit 1
+fi
 
 # Vortex's native dotnetprobe is a framework-dependent net9.0 executable. The
 # Arch package gets a host runtime through pacman, but an AppImage must carry it
