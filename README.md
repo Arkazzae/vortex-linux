@@ -36,9 +36,10 @@ chmod +x Vortex-*.AppImage
 ./Vortex-*.AppImage
 ```
 
-The AppImage contains Vortex and the Windows .NET runtimes used by modding
-tools. Wine remains a system requirement. On a system without FUSE 2, start it
-with:
+The AppImage contains Vortex, the Linux .NET 9 runtime required by its startup
+probe, and the Windows .NET runtimes used by modding tools. A system-wide .NET
+installation is not required. Wine remains a system requirement. On a system
+without FUSE 2, start it with:
 
 ```sh
 ./Vortex-*.AppImage --appimage-extract-and-run
@@ -97,6 +98,14 @@ renderer. A successful build from `master` produces both release formats and
 publishes them together. A daily check also tests the latest upstream Vortex
 release; it reports breakage but does not publish code that has not yet been
 pinned in the build recipe.
+
+Before publication, the AppImage is also started in a fresh Ubuntu container
+that has Wine and the desktop libraries but no system .NET installation. Run
+the same smoke test locally with Docker:
+
+```sh
+scripts/test-appimage.sh dist/Vortex-*.AppImage
+```
 
 To check a new upstream release locally:
 

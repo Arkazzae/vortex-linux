@@ -113,10 +113,15 @@ jobs:
     if: >-
       ${{
         needs.compatibility.result == 'success' &&
-        github.ref == 'refs/heads/master' &&
         (
-          github.event_name == 'push' ||
-          (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
+          github.event_name == 'pull_request' ||
+          (
+            github.ref == 'refs/heads/master' &&
+            (
+              github.event_name == 'push' ||
+              (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
+            )
+          )
         )
       }}
     runs-on: ubuntu-latest
@@ -184,12 +189,45 @@ jobs:
           compression-level: 0
           retention-days: 30
 
+  test-appimage:
+    name: Test AppImage on clean Ubuntu
+    needs: build-package
+    if: ${{ needs.build-package.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out packaging repository
+        uses: actions/checkout@v6
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: vortex-linux-${{ needs.build-package.outputs.package_version }}
+          path: dist
+
+      - name: Verify and start AppImage in a clean container
+        run: |
+          (
+            cd dist
+            sha256sum --check "${{ needs.build-package.outputs.appimage_checksum }}"
+          )
+          scripts/test-appimage.sh "dist/${{ needs.build-package.outputs.appimage_archive }}"
+
   publish-package:
     name: Publish Linux release
     needs:
       - compatibility
       - build-package
-    if: ${{ needs.build-package.result == 'success' }}
+      - test-appimage
+    if: >-
+      ${{
+        needs.test-appimage.result == 'success' &&
+        github.ref == 'refs/heads/master' &&
+        (
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
