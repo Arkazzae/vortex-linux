@@ -53,8 +53,21 @@ if [[ "$package_name" != "vortex-linux" || -z "$package_version" ]]; then
   exit 1
 fi
 
+# pkgrel is required inside the Arch package so pacman can distinguish rebuilt
+# packages. Keep it out of the public download name: users only need the Vortex
+# version, while replacing a release should replace the file at the same name.
+release_version="$(sed -n 's/^\tpkgver = //p' "$generated_srcinfo" | head -n 1)"
+package_filename="$(basename -- "$package_path")"
+versioned_prefix="${package_name}-${package_version}-x86_64"
+if [[ -z "$release_version" || "$package_version" != "${release_version}-"* || \
+    "$package_filename" != "${versioned_prefix}"* ]]; then
+  printf 'Unable to derive the public package name from: %s\n' "$package_filename" >&2
+  exit 1
+fi
+package_suffix="${package_filename#"$versioned_prefix"}"
+
 install -dm755 "$OUTPUT_DIRECTORY"
-package_archive="$(basename -- "$package_path")"
+package_archive="${package_name}-${release_version}-x86_64${package_suffix}"
 install -m644 "$package_path" "$OUTPUT_DIRECTORY/$package_archive"
 (
   cd "$OUTPUT_DIRECTORY"
@@ -64,7 +77,8 @@ install -m644 "$package_path" "$OUTPUT_DIRECTORY/$package_archive"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'package_name=%s\n' "$package_name" >> "$GITHUB_OUTPUT"
-  printf 'package_version=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
+  printf 'package_version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
+  printf 'package_revision=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
   printf 'package_archive=%s\n' "$package_archive" >> "$GITHUB_OUTPUT"
   printf 'checksum_file=%s.sha256\n' "$package_archive" >> "$GITHUB_OUTPUT"
 fi
@@ -74,11 +88,12 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 ### Arch package
 
 - Package: \`${package_name}\`
-- Version: \`${package_version}\`
+- Version: \`${release_version}\`
+- Internal Arch revision: \`${package_version}\`
 - Archive: \`${package_archive}\`
 - Size: \`$(du -h "$OUTPUT_DIRECTORY/$package_archive" | cut -f1)\`
 EOF
 fi
 
 printf 'Built %s %s: %s\n' \
-  "$package_name" "$package_version" "$OUTPUT_DIRECTORY/$package_archive"
+  "$package_name" "$release_version" "$OUTPUT_DIRECTORY/$package_archive"

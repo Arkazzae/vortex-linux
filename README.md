@@ -13,6 +13,7 @@ This repo does the other thing: it patches Vortex to actually understand Linux, 
 - Launches games through Steam
 - Runs Windows modding tools through Wine
 - Deploys and purges hardlinked mods without leaving stale files behind
+- Resolves Windows path casing consistently and keeps staging files safe when external changes are detected
 
 These are general Linux fixes, not per-game hacks. Game-specific Vortex extensions can still carry their own Windows-only assumptions, so not every supported game is guaranteed to work — but the base is sane now.
 
@@ -29,6 +30,8 @@ Nothing from Vortex is vendored here. The build pulls the official source from N
 ## Install
 
 Grab the [latest release](https://github.com/Arkazzae/vortex-linux/releases/latest). Every file ships with a `.sha256` next to it.
+
+There is only one public release at a time. A successful build replaces the previous release and keeps filenames tied to the Vortex version (for example `Vortex-2.4.2-x86_64.AppImage`), without exposing Arch's internal `pkgrel` rebuild number.
 
 ### Arch
 

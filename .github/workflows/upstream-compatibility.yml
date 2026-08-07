@@ -132,6 +132,7 @@ jobs:
     outputs:
       package_name: ${{ steps.package.outputs.package_name }}
       package_version: ${{ steps.package.outputs.package_version }}
+      package_revision: ${{ steps.package.outputs.package_revision }}
       package_archive: ${{ steps.package.outputs.package_archive }}
       checksum_file: ${{ steps.package.outputs.checksum_file }}
       appimage_archive: ${{ steps.appimage.outputs.appimage_archive }}
@@ -251,7 +252,7 @@ jobs:
         working-directory: dist
         run: sha256sum --check "$CHECKSUM_FILE" "$APPIMAGE_CHECKSUM"
 
-      - name: Create or update versioned release
+      - name: Replace the main release
         id: release
         env:
           RELEASE_TAG: v${{ needs.build-package.outputs.package_version }}
@@ -282,31 +283,41 @@ jobs:
           \`\`\`
           EOF
 
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" \
-              "dist/$PACKAGE_ARCHIVE" \
-              "dist/$CHECKSUM_FILE" \
-              "dist/$APPIMAGE_ARCHIVE" \
-              "dist/$APPIMAGE_CHECKSUM" \
+          # This repository intentionally exposes one release. Each successful
+          # build replaces it wholesale so stale revisions and assets cannot
+          # confuse users. --cleanup-tag also removes the obsolete release tag.
+          mapfile -t old_release_tags < <(
+            gh api \
+              --paginate \
+              "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[].tag_name'
+          )
+          for old_release_tag in "${old_release_tags[@]}"; do
+            gh release delete "$old_release_tag" \
               --repo "$GITHUB_REPOSITORY" \
-              --clobber
-            gh release edit "$RELEASE_TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Vortex for Linux ${PACKAGE_VERSION}" \
-              --notes-file release-notes.md \
-              --latest
-          else
-            gh release create "$RELEASE_TAG" \
-              "dist/$PACKAGE_ARCHIVE" \
-              "dist/$CHECKSUM_FILE" \
-              "dist/$APPIMAGE_ARCHIVE" \
-              "dist/$APPIMAGE_CHECKSUM" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "Vortex for Linux ${PACKAGE_VERSION}" \
-              --notes-file release-notes.md \
-              --latest
+              --cleanup-tag \
+              --yes
+          done
+
+          # Recover cleanly if a previous run removed the release but stopped
+          # before deleting its tag.
+          if gh api \
+              "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            gh api \
+              --method DELETE \
+              "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG"
           fi
+
+          gh release create "$RELEASE_TAG" \
+            "dist/$PACKAGE_ARCHIVE" \
+            "dist/$CHECKSUM_FILE" \
+            "dist/$APPIMAGE_ARCHIVE" \
+            "dist/$APPIMAGE_CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Vortex for Linux ${PACKAGE_VERSION}" \
+            --notes-file release-notes.md \
+            --latest
 
           release_url="$(gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \

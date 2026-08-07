@@ -26,12 +26,15 @@ fi
 
 package_info="$(bsdtar -xOf "$PACKAGE_PATH" .PKGINFO)"
 package_name="$(sed -n 's/^pkgname = //p' <<< "$package_info")"
-package_version="$(sed -n 's/^pkgver = //p' <<< "$package_info")"
+package_revision="$(sed -n 's/^pkgver = //p' <<< "$package_info")"
 package_arch="$(sed -n 's/^arch = //p' <<< "$package_info")"
+release_version="$(sed -n 's/^\tpkgver = //p' "$REPOSITORY_ROOT/.SRCINFO" | head -n 1)"
 
-if [[ "$package_name" != vortex-linux || -z "$package_version" || "$package_arch" != x86_64 ]]; then
+if [[ "$package_name" != vortex-linux || -z "$package_revision" || \
+    -z "$release_version" || "$package_revision" != "${release_version}-"* || \
+    "$package_arch" != x86_64 ]]; then
   printf 'Unsupported package metadata: %s %s %s\n' \
-    "$package_name" "$package_version" "$package_arch" >&2
+    "$package_name" "$package_revision" "$package_arch" >&2
   exit 2
 fi
 
@@ -94,12 +97,12 @@ ln -s vortex.png "$app_directory/.DirIcon"
 
 sed \
   -e 's/^Exec=.*/Exec=AppRun %u/' \
-  -e 's/^X-AppImage-Version=.*/X-AppImage-Version='"$package_version"'/' \
+  -e 's/^X-AppImage-Version=.*/X-AppImage-Version='"$release_version"'/' \
   "$app_directory/usr/share/applications/com.nexusmods.vortex.desktop" \
   > "$app_directory/com.nexusmods.vortex.desktop"
 
 if ! grep -q '^X-AppImage-Version=' "$app_directory/com.nexusmods.vortex.desktop"; then
-  printf 'X-AppImage-Version=%s\n' "$package_version" \
+  printf 'X-AppImage-Version=%s\n' "$release_version" \
     >> "$app_directory/com.nexusmods.vortex.desktop"
 fi
 
@@ -109,7 +112,7 @@ printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tool_path" | sha256sum --check --stat
 chmod 755 "$tool_path"
 
 install -dm755 "$OUTPUT_DIRECTORY"
-appimage_archive="Vortex-${package_version}-x86_64.AppImage"
+appimage_archive="Vortex-${release_version}-x86_64.AppImage"
 ARCH=x86_64 "$tool_path" --appimage-extract-and-run \
   "$app_directory" "$OUTPUT_DIRECTORY/$appimage_archive"
 chmod 755 "$OUTPUT_DIRECTORY/$appimage_archive"
