@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.4.2
-pkgrel=12
+pkgrel=14
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -71,6 +71,7 @@ _patches=(
   '0009-linux-staging-suggestions.patch'
   '0010-download-state-recovery.patch'
   '0011-linux-case-safe-deployment.patch'
+  '0012-linux-extension-path-compatibility.patch'
 )
 
 source=(
@@ -108,6 +109,7 @@ sha512sums=(
   '6c1324e03fa2cf56798511d15d034fd5368dde10a170dc515cf303ae8dd8950e03b9a9365b929a07de1d145d1153588081a276e18b03888ba370b9bbc3988f0a'
   '4889fd282fdab0dbef4e6d7b0f1f1afc07f25e799c77df910ee88bf0733f1cab84f56054618e6af9326033e71a9b0250be111a41b3b7ddf801cdc8273ebd3c51'
   'c09b6a4b0fa13a4f642c6492fa6ff63ad8b984a6f4bc1ace3f4d1afe27985d5d287ad2a3399cc099d263155f933156bf14e12d91e2a42af8584efead78ed350a'
+  '78ebf9ea2fa0fb7866912b05e1b9b374dabf44784f6b48853e586f6049576ad46ac096bab10ea0cf7bd138b955e7aa442ece02b78abd960c178f9a25aa96cc30'
   '73db679d526b6657b454ae4e464f8adc5ee503630648f160877ef88e8fce2d48c9272687f4bf49a60e5adf4bee36b0abf06c502116c0a674f8648a8833dc38b2'
   '9bf22572d72496096c30271f225814c1666430afa85bee5b4f971b173c4931751bbca3d012bff984c26b47346544655bb140a1dce68fd2f58718769fcc38e68b'
   'ce4d3230131ebe82af04f991b7550e2a0c353ae829f7707eb622403aef10d3e50fd93bcb048235a09c9fd612d8416e11b48a87f33e7bcb55b098331bd75de263'
@@ -147,6 +149,25 @@ build() {
 
   pnpm run build
   pnpm nx run @vortex/main:publish
+
+  # leveldown 5.6.0 ships an old N-API prebuild which node-gyp-build prefers
+  # over the binary rebuilt for Electron.  Under Electron 43 / Node 24 that
+  # prebuild segfaults in snappy::CompressFragment while Vortex updates its
+  # metadata database, causing Electron to restart the renderer indefinitely.
+  # Keep prebuild-only resolution for the other native dependencies, but make
+  # leveldown's selected Linux prebuild the binary produced by this build.
+  local leveldown_dir="$srcdir/vortex/src/main/dist/node_modules/leveldown"
+  local leveldown_build="$leveldown_dir/build/Release/leveldown.node"
+  local leveldown_prebuild="$leveldown_dir/prebuilds/linux-x64/node.napi.glibc.node"
+  if [[ ! -f "$leveldown_build" || ! -f "$leveldown_prebuild" ]]; then
+    printf 'The rebuilt or prebuilt leveldown addon is missing\n' >&2
+    return 1
+  fi
+  install -Dm755 "$leveldown_build" "$leveldown_prebuild"
+  if ! cmp -s "$leveldown_build" "$leveldown_prebuild"; then
+    printf 'Unable to replace the incompatible leveldown prebuild\n' >&2
+    return 1
+  fi
 
   # Some Nx targets stage Electron output as part of their dependency graph.
   # Always package into a fresh, explicitly scoped directory.
