@@ -287,11 +287,20 @@ jobs:
 
           # Release tags include pkgrel and are immutable. Reusing a package
           # revision for a different commit would make normal tag fetches fail.
-          target_tag_sha="$(
-            gh api \
+          target_tag_response="$RUNNER_TEMP/release-tag-response.json"
+          target_tag_error="$RUNNER_TEMP/release-tag-error.log"
+          if gh api \
               "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
-              --jq '.object.sha' 2>/dev/null || true
-          )"
+              >"$target_tag_response" 2>"$target_tag_error"; then
+            target_tag_sha="$(jq -er '.object.sha' "$target_tag_response")"
+          elif jq -e '(.status | tostring) == "404"' \
+              "$target_tag_response" >/dev/null 2>&1; then
+            target_tag_sha=""
+          else
+            cat "$target_tag_error" >&2
+            cat "$target_tag_response" >&2
+            exit 1
+          fi
           if [[ -n "$target_tag_sha" && "$target_tag_sha" != "$GITHUB_SHA" ]]; then
             printf '::error::Release tag %s already points to %s; bump pkgrel before publishing %s.\n' \
               "$RELEASE_TAG" "$target_tag_sha" "$GITHUB_SHA"

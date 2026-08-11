@@ -2,7 +2,7 @@
 
 [![Build status](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml/badge.svg)](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml)
 
-[Vortex](https://www.nexusmods.com/about/vortex/) is the mod manager from Nexus Mods — the one most people use for Skyrim, Fallout, Starfield, Baldur's Gate 3 and a few hundred other games. It's an Electron app, so it *technically* starts on Linux. The usual workaround is running Vortex itself inside a Wine prefix, which is slow, fragile and annoying to set up.
+[Vortex](https://www.nexusmods.com/about/vortex/) is the mod manager from Nexus Mods — the one most people use for Skyrim, Fallout, Starfield, Baldur's Gate 3 and a few hundred other games. It's an Electron app, so it *technically* starts on Linux. But th usual workaround is running Vortex itself inside a Wine prefix, which is slow, fragile and annoying to set up.
 
 This repo does the other thing: it patches Vortex to actually understand Linux, and builds it as a native app.
 
@@ -24,14 +24,11 @@ These are general Linux fixes, not per-game hacks. Game-specific Vortex extensio
 - Abiotic Factor
 - Zero Sievert
 - Baldur's Gate 3
-
-Nothing from Vortex is vendored here. The build pulls the official source from Nexus Mods and applies the patches on top. This is a community project, not an official Nexus Mods release.
+- Cyberpunk 2077
 
 ## Install
 
-Grab the [latest release](https://github.com/Arkazzae/vortex-linux/releases/latest). Every file ships with a `.sha256` next to it.
-
-There is only one public release at a time. A successful build replaces the previous release and keeps filenames tied to the Vortex version (for example `Vortex-2.4.2-x86_64.AppImage`), without exposing Arch's internal `pkgrel` rebuild number.
+Grab the [latest release](https://github.com/Arkazzae/vortex-linux/releases/latest).
 
 ### Arch
 
