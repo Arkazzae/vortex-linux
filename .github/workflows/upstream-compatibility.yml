@@ -236,6 +236,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
+      PACKAGE_REVISION: ${{ needs.build-package.outputs.package_revision }}
       PACKAGE_ARCHIVE: ${{ needs.build-package.outputs.package_archive }}
       CHECKSUM_FILE: ${{ needs.build-package.outputs.checksum_file }}
       APPIMAGE_ARCHIVE: ${{ needs.build-package.outputs.appimage_archive }}
@@ -255,12 +256,13 @@ jobs:
       - name: Replace the main release
         id: release
         env:
-          RELEASE_TAG: v${{ needs.build-package.outputs.package_version }}
+          RELEASE_TAG: v${{ needs.build-package.outputs.package_revision }}
         run: |
           cat > release-notes.md <<EOF
           Vortex for Linux, built after the compatibility suite passed.
 
           - Version: \`${PACKAGE_VERSION}\`
+          - Package revision: \`${PACKAGE_REVISION}\`
           - Upstream commit: \`${UPSTREAM_COMMIT}\`
           - Packaging source: https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}
           - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
@@ -283,9 +285,22 @@ jobs:
           \`\`\`
           EOF
 
-          # This repository intentionally exposes one release. Each successful
-          # build replaces it wholesale so stale revisions and assets cannot
-          # confuse users. --cleanup-tag also removes the obsolete release tag.
+          # Release tags include pkgrel and are immutable. Reusing a package
+          # revision for a different commit would make normal tag fetches fail.
+          target_tag_sha="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+              --jq '.object.sha' 2>/dev/null || true
+          )"
+          if [[ -n "$target_tag_sha" && "$target_tag_sha" != "$GITHUB_SHA" ]]; then
+            printf '::error::Release tag %s already points to %s; bump pkgrel before publishing %s.\n' \
+              "$RELEASE_TAG" "$target_tag_sha" "$GITHUB_SHA"
+            exit 1
+          fi
+
+          # This repository intentionally exposes one release. Remove older
+          # release entries, but retain their immutable tags as historical
+          # source refs and never delete or move the tag selected for this build.
           mapfile -t old_release_tags < <(
             gh api \
               --paginate \
@@ -293,31 +308,50 @@ jobs:
               --jq '.[].tag_name'
           )
           for old_release_tag in "${old_release_tags[@]}"; do
+            if [[ "$old_release_tag" == "$RELEASE_TAG" ]]; then
+              continue
+            fi
             gh release delete "$old_release_tag" \
               --repo "$GITHUB_REPOSITORY" \
-              --cleanup-tag \
               --yes
           done
 
-          # Recover cleanly if a previous run removed the release but stopped
-          # before deleting its tag.
-          if gh api \
-              "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            gh api \
-              --method DELETE \
-              "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              "dist/$PACKAGE_ARCHIVE" \
+              "dist/$CHECKSUM_FILE" \
+              "dist/$APPIMAGE_ARCHIVE" \
+              "dist/$APPIMAGE_CHECKSUM" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Vortex for Linux ${PACKAGE_REVISION}" \
+              --notes-file release-notes.md \
+              --latest
+          elif [[ -n "$target_tag_sha" ]]; then
+            gh release create "$RELEASE_TAG" \
+              "dist/$PACKAGE_ARCHIVE" \
+              "dist/$CHECKSUM_FILE" \
+              "dist/$APPIMAGE_ARCHIVE" \
+              "dist/$APPIMAGE_CHECKSUM" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Vortex for Linux ${PACKAGE_REVISION}" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/$PACKAGE_ARCHIVE" \
+              "dist/$CHECKSUM_FILE" \
+              "dist/$APPIMAGE_ARCHIVE" \
+              "dist/$APPIMAGE_CHECKSUM" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Vortex for Linux ${PACKAGE_REVISION}" \
+              --notes-file release-notes.md \
+              --latest
           fi
-
-          gh release create "$RELEASE_TAG" \
-            "dist/$PACKAGE_ARCHIVE" \
-            "dist/$CHECKSUM_FILE" \
-            "dist/$APPIMAGE_ARCHIVE" \
-            "dist/$APPIMAGE_CHECKSUM" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Vortex for Linux ${PACKAGE_VERSION}" \
-            --notes-file release-notes.md \
-            --latest
 
           release_url="$(gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
