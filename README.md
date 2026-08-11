@@ -2,7 +2,7 @@
 
 [![Build status](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml/badge.svg)](https://github.com/Arkazzae/vortex-linux/actions/workflows/upstream-compatibility.yml)
 
-[Vortex](https://www.nexusmods.com/about/vortex/) is the mod manager from Nexus Mods — the one most people use for Skyrim, Fallout, Starfield, Baldur's Gate 3 and a few hundred other games. It's an Electron app, so it *technically* starts on Linux. But th usual workaround is running Vortex itself inside a Wine prefix, which is slow, fragile and annoying to set up.
+[Vortex](https://www.nexusmods.com/about/vortex/) is the mod manager from Nexus Mods — the one most people use for Skyrim, Fallout, Starfield, Baldur's Gate 3 and a few hundred other games. It's an Electron app, so it *technically* starts on Linux. But the usual workaround is running Vortex itself inside a Wine prefix, which is slow, fragile and annoying to set up.
 
 This repo does the other thing: it patches Vortex to actually understand Linux, and builds it as a native app.
 
