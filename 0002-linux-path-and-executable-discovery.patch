@@ -44,11 +44,11 @@ index cec670855..cb110fad1 100644
            return t("<Invalid Drive>");
          }
 diff --git a/src/renderer/src/extensions/gamemode_management/index.ts b/src/renderer/src/extensions/gamemode_management/index.ts
-index 713cff05f..9b8eecec3 100644
+index 60a0326d4..d897c3b6f 100644
 --- a/src/renderer/src/extensions/gamemode_management/index.ts
 +++ b/src/renderer/src/extensions/gamemode_management/index.ts
-@@ -32,6 +32,7 @@ import * as fs from "../../util/fs";
- import GameStoreHelper from "../../util/GameStoreHelper";
+@@ -32,6 +32,7 @@ import GameStoreHelper from "../../util/GameStoreHelper";
+ import { isContributed } from "../../util/isContributed";
  import local from "../../util/local";
  import { showError } from "../../util/message";
 +import { resolveNativeExecutable, resolvePlatformPath } from "../../util/nativeExecutable";

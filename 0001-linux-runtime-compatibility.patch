@@ -98,7 +98,7 @@ index 44c08248c..f9903a17b 100644
    ],
    "buildDependenciesFromSource": false,
 diff --git a/src/main/package.json b/src/main/package.json
-index 2c38ce68c..78db988dd 100644
+index 966fe3691..68deccfba 100644
 --- a/src/main/package.json
 +++ b/src/main/package.json
 @@ -3,7 +3,7 @@
@@ -106,7 +106,7 @@ index 2c38ce68c..78db988dd 100644
    "author": "Black Tree Gaming Ltd.",
    "license": "GPL-3.0-only",
 -  "version": "1.0.0",
-+  "version": "2.4.2",
++  "version": "2.5.0",
    "private": true,
    "type": "commonjs",
    "main": "build/main.cjs",
