@@ -1,7 +1,7 @@
 # Maintainer: Arkazzae <https://github.com/Arkazzae>
 
 pkgname=vortex-linux
-pkgver=2.5.0
+pkgver=2.6.2
 pkgrel=1
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
@@ -55,7 +55,7 @@ conflicts=('vortex' 'vortex-bin' 'vortex-git')
 options=('!debug' '!strip')
 install=vortex.install
 
-_upstream_commit='bdf868e527ea81fc60847898e68b1a7b8097a6bd'
+_upstream_commit='af2fd1945e32ec3fabb9acdc117433e228ffdcca'
 _dotnet6='6.0.36'
 _dotnet8='8.0.29'
 _dotnet10='10.0.10'

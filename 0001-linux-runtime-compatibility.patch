@@ -84,21 +84,19 @@ index a290954d1..54a814ac3 100644
    if (info === undefined) return "";
    return info.productVersionString;
 diff --git a/src/main/electron-builder.config.json b/src/main/electron-builder.config.json
-index 44c08248c..f9903a17b 100644
+index 080a0afb5..f1d0a19cf 100644
 --- a/src/main/electron-builder.config.json
 +++ b/src/main/electron-builder.config.json
-@@ -73,8 +73,8 @@
-     "node_modules/react-select/scss",
-     "node_modules/@nexusmods/fomod-installer-ipc/dist/*.exe",
+@@ -74,7 +74,6 @@
+     "assets/dotnetprobe*",
      "assets/*.exe",
-+    "assets/dotnetprobe",
      "assets/css/**",
 -    "**/*.node",
      "duckdb-extensions"
    ],
    "buildDependenciesFromSource": false,
 diff --git a/src/main/package.json b/src/main/package.json
-index 966fe3691..68deccfba 100644
+index f0f5b8bee..9e26507c3 100644
 --- a/src/main/package.json
 +++ b/src/main/package.json
 @@ -3,7 +3,7 @@
@@ -106,7 +104,7 @@ index 966fe3691..68deccfba 100644
    "author": "Black Tree Gaming Ltd.",
    "license": "GPL-3.0-only",
 -  "version": "1.0.0",
-+  "version": "2.5.0",
++  "version": "2.6.2",
    "private": true,
    "type": "commonjs",
    "main": "build/main.cjs",

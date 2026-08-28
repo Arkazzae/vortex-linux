@@ -253,7 +253,7 @@ jobs:
         working-directory: dist
         run: sha256sum --check "$CHECKSUM_FILE" "$APPIMAGE_CHECKSUM"
 
-      - name: Replace the main release
+      - name: Publish the latest release
         id: release
         env:
           RELEASE_TAG: v${{ needs.build-package.outputs.package_revision }}
@@ -306,24 +306,6 @@ jobs:
               "$RELEASE_TAG" "$target_tag_sha" "$GITHUB_SHA"
             exit 1
           fi
-
-          # This repository intentionally exposes one release. Remove older
-          # release entries, but retain their immutable tags as historical
-          # source refs and never delete or move the tag selected for this build.
-          mapfile -t old_release_tags < <(
-            gh api \
-              --paginate \
-              "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-              --jq '.[].tag_name'
-          )
-          for old_release_tag in "${old_release_tags[@]}"; do
-            if [[ "$old_release_tag" == "$RELEASE_TAG" ]]; then
-              continue
-            fi
-            gh release delete "$old_release_tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --yes
-          done
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
