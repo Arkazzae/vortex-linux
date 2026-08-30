@@ -1,0 +1,43 @@
+diff --git a/extensions/gamebryo-archive-support/package.json b/extensions/gamebryo-archive-support/package.json
+index e683caf05..c28e757ec 100644
+--- a/extensions/gamebryo-archive-support/package.json
++++ b/extensions/gamebryo-archive-support/package.json
+@@ -4,7 +4,7 @@
+   "description": "Support for Gamebryo/Bethesda archives (BSA and BA2)",
+   "scripts": {
+     "_build": "node build.mjs && pnpm extractInfo",
+-    "build": "node -e \"if(process.platform==='win32')process.exit(1)\" || (pnpm run _build)",
++    "build": "pnpm run _build",
+     "typecheck": "pnpm tsc",
+     "test": "pnpm exec vitest run"
+   },
+diff --git a/extensions/gamebryo-archive-support/src/linux.smoke.test.ts b/extensions/gamebryo-archive-support/src/linux.smoke.test.ts
+new file mode 100644
+index 000000000..70141e6a4
+--- /dev/null
++++ b/extensions/gamebryo-archive-support/src/linux.smoke.test.ts
+@@ -0,0 +1,24 @@
++import * as path from "node:path";
++
++import { describe, expect, it } from "vitest";
++
++import { loadBA2 } from "./ba2";
++import { loadBSA } from "./bsa";
++
++const TEST_DATA = path.resolve(__dirname, "..", "test-data");
++
++describe.runIf(process.platform === "linux")("Gamebryo archive support on Linux", () => {
++  it("reads a Fallout 4 BA2 archive without native addons", async () => {
++    const archive = await loadBA2(path.join(TEST_DATA, "test-gnrl.ba2"));
++
++    expect(archive.type).toBe("general");
++    expect(archive.fileList.length).toBeGreaterThan(0);
++  });
++
++  it("reads and verifies a Skyrim SE BSA archive without native addons", async () => {
++    const archive = await loadBSA(path.join(TEST_DATA, "test-v105.bsa"), true);
++
++    expect(archive.version).toBe(0x69);
++    expect(archive.fileList.length).toBeGreaterThan(0);
++  });
++});

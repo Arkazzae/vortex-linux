@@ -109,6 +109,7 @@ _patches=(
   '0013-linux-win32-normalize-compatibility.patch'
   '0014-linux-epic-extension-api.patch'
   '0015-linux-dotnet-game-version.patch'
+  '0016-linux-gamebryo-archive-support.patch'
 )
 
 source=(
@@ -136,6 +137,7 @@ noextract=(
 sha512sums=(
   # Vortex is pinned by _upstream_commit; all following local files are versioned
   # together with this PKGBUILD, so hashing them only duplicates Git integrity.
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
@@ -195,6 +197,22 @@ build() {
   export npm_config_disturl='https://electronjs.org/headers'
 
   pnpm run build
+
+  local gamebryo_plugin
+  for gamebryo_plugin in gamebryo-archive-support gamebryo-savegame-management; do
+    if [[ ! -s "$srcdir/vortex/extensions/$gamebryo_plugin/dist/index.cjs" ]]; then
+      printf 'Gamebryo extension was not built for Linux: %s\n' "$gamebryo_plugin" >&2
+      return 1
+    fi
+  done
+  if [[ -n "$(
+    find "$srcdir/vortex/extensions/gamebryo-archive-support/dist" \
+      -type f -name '*.node' -print -quit
+  )" ]]; then
+    printf 'Gamebryo archive support unexpectedly contains a native Node addon\n' >&2
+    return 1
+  fi
+
   pnpm nx run @vortex/main:publish
 
   # leveldown 5.6.0 ships an old N-API prebuild which node-gyp-build prefers
