@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.6.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -36,16 +36,50 @@ depends=(
   'xdg-utils'
 )
 makedepends=(
+  'corepack'
   'dotnet-sdk'
   'git'
   'nodejs-lts-krypton'
   'npm'
   'patchelf'
-  'pnpm'
   'python'
   'python-setuptools'
   'yarn'
 )
+
+_activate_upstream_pnpm() {
+  cd "$srcdir/vortex"
+
+  local expected_pnpm
+  expected_pnpm="$(
+    node -p '(/^pnpm@([^+]+)/.exec(require("./package.json").packageManager ?? "") ?? [, ""])[1]'
+  )"
+  if [[ ! "$expected_pnpm" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+    printf 'Unable to determine the pnpm version required by upstream\n' >&2
+    return 1
+  fi
+
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  export COREPACK_HOME="$srcdir/corepack-cache"
+  mkdir -p "$srcdir/corepack-bin" "$COREPACK_HOME"
+  if ! command -v corepack >/dev/null 2>&1; then
+    printf 'Corepack is required to activate upstream pnpm %s\n' "$expected_pnpm" >&2
+    return 1
+  fi
+  if ! corepack enable --install-directory "$srcdir/corepack-bin" pnpm; then
+    printf 'Unable to create the Corepack pnpm shim\n' >&2
+    return 1
+  fi
+  export PATH="$srcdir/corepack-bin:$PATH"
+
+  local actual_pnpm
+  actual_pnpm="$("$srcdir/corepack-bin/pnpm" --version)" || return 1
+  if [[ "$actual_pnpm" != "$expected_pnpm" ]]; then
+    printf 'Upstream requires pnpm %s, but Corepack activated %s\n' \
+      "$expected_pnpm" "$actual_pnpm" >&2
+    return 1
+  fi
+}
 optdepends=(
   'kde-cli-tools: native trash support on KDE Plasma'
   'pipewire: screen sharing under Wayland'
@@ -130,6 +164,8 @@ sha512sums=(
 prepare() {
   cd "$srcdir/vortex"
 
+  _activate_upstream_pnpm
+
   local compatibility_patch
   for compatibility_patch in "${_patches[@]}"; do
     patch -Np1 -i "$srcdir/$compatibility_patch"
@@ -143,6 +179,8 @@ prepare() {
 
 build() {
   cd "$srcdir/vortex"
+
+  _activate_upstream_pnpm
 
   export CI=1
   export NODE_ENV='production'
