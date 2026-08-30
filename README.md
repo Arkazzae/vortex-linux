@@ -81,7 +81,9 @@ The build is pinned to an exact upstream Vortex commit and downloads the source,
 
 ## How it's tested
 
-CI applies every patch, runs the affected tests and typechecks the renderer. Builds from `master` produce both release formats and publish them together. A daily job also tests the newest upstream Vortex release — it reports breakage, but won't publish anything that isn't pinned in the PKGBUILD yet.
+CI applies every patch, runs the affected tests and typechecks the renderer. Changes on `master` build both release formats; an unpublished package revision publishes them together.
+
+Every six hours, an unattended update job checks the newest stable upstream Vortex release. When it finds one, it applies the patches, runs their tests and renderer typechecking, builds both release formats, and boots the AppImage in a clean Ubuntu container. Only after every validation stage succeeds does the bot update `PKGBUILD` / `.SRCINFO` on `master` and publish the release. A validation or build failure leaves `master` and the current release untouched. Any failure opens or updates one issue with the broken stage; an interrupted publication is retried by the next scheduled run.
 
 Before release, the AppImage is booted in a clean Ubuntu container with Wine and the desktop libraries but no system .NET. You can run the same check locally:
 

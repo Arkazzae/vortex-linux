@@ -30,7 +30,7 @@ on:
       - "README.md"
       - "LICENSE"
   schedule:
-    - cron: "23 5 * * *"
+    - cron: "23 */6 * * *"
       timezone: "Europe/Warsaw"
   workflow_dispatch:
     inputs:
@@ -56,6 +56,7 @@ jobs:
       upstream_ref: ${{ steps.prepare.outputs.upstream_ref }}
       upstream_commit: ${{ steps.prepare.outputs.upstream_commit }}
       upstream_url: ${{ steps.prepare.outputs.upstream_url }}
+      upstream_changed: ${{ steps.prepare.outputs.upstream_changed }}
     steps:
       - name: Check out compatibility repository
         uses: actions/checkout@v6
@@ -63,12 +64,13 @@ jobs:
       - name: Select upstream revision and apply patches
         id: prepare
         env:
+          EVENT_NAME: ${{ github.event_name }}
           GITHUB_TOKEN: ${{ github.token }}
           REQUESTED_REF: ${{ inputs.upstream_ref }}
         run: |
           if [[ -n "$REQUESTED_REF" ]]; then
             upstream_ref="$REQUESTED_REF"
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
             upstream_ref="latest"
           else
             upstream_ref="pinned"
@@ -79,22 +81,26 @@ jobs:
             --worktree "$RUNNER_TEMP/vortex-upstream"
 
       - name: Set up upstream Node.js
+        if: ${{ github.event_name != 'schedule' || steps.prepare.outputs.upstream_changed == 'true' }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ steps.prepare.outputs.node_version }}
           package-manager-cache: false
 
       - name: Activate upstream pnpm version
+        if: ${{ github.event_name != 'schedule' || steps.prepare.outputs.upstream_changed == 'true' }}
         working-directory: ${{ steps.prepare.outputs.worktree }}
         env:
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+          PNPM_VERSION: ${{ steps.prepare.outputs.pnpm_version }}
         run: |
           corepack enable
-          corepack prepare "pnpm@${{ steps.prepare.outputs.pnpm_version }}" --activate
+          corepack prepare "pnpm@$PNPM_VERSION" --activate
           node --version
           pnpm --version
 
       - name: Install upstream dependencies
+        if: ${{ github.event_name != 'schedule' || steps.prepare.outputs.upstream_changed == 'true' }}
         working-directory: ${{ steps.prepare.outputs.worktree }}
         env:
           CI: "1"
@@ -105,21 +111,128 @@ jobs:
           node scripts/create-env-file.mjs
 
       - name: Run patch tests and renderer typecheck
+        if: ${{ github.event_name != 'schedule' || steps.prepare.outputs.upstream_changed == 'true' }}
         run: scripts/run-upstream-tests.sh "${{ steps.prepare.outputs.worktree }}"
 
-  build-package:
-    name: Build Linux release artifacts
+  prepare-release:
+    name: Prepare release metadata
     needs: compatibility
     if: >-
       ${{
         needs.compatibility.result == 'success' &&
+        (
+          github.event_name != 'workflow_dispatch' ||
+          inputs.upstream_ref == 'pinned' ||
+          inputs.upstream_ref == 'latest'
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.metadata.outputs.changed }}
+      release_needed: ${{ steps.metadata.outputs.release_needed }}
+      package_version: ${{ steps.metadata.outputs.package_version }}
+      package_revision: ${{ steps.metadata.outputs.package_revision }}
+    steps:
+      - name: Check out packaging repository
+        uses: actions/checkout@v6
+
+      - name: Prepare tested package metadata
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_CHANGED: ${{ needs.compatibility.outputs.upstream_changed }}
+          UPSTREAM_REF: ${{ needs.compatibility.outputs.upstream_ref }}
+          UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
+        run: |
+          if [[ "$UPSTREAM_CHANGED" == true ]]; then
+            GITHUB_OUTPUT='' scripts/update-upstream-version.sh \
+              --ref "$UPSTREAM_REF" \
+              --commit "$UPSTREAM_COMMIT"
+            metadata_changed=true
+          else
+            metadata_changed=false
+          fi
+
+          package_version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          package_release="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
+          if [[ -z "$package_version" || -z "$package_release" ]]; then
+            echo 'Unable to read the pinned package revision' >&2
+            exit 1
+          fi
+          package_revision="${package_version}-${package_release}"
+
+          # A failed publish may leave master pinned to the tested version but
+          # without a complete release. Treat that as pending work so the next
+          # scheduled run rebuilds and retries without maintainer involvement.
+          release_needed=true
+          if [[ "$metadata_changed" == false ]]; then
+            release_json="$RUNNER_TEMP/release.json"
+            if gh release view "v${package_revision}" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json assets > "$release_json" 2>/dev/null; then
+              required_assets=(
+                "vortex-linux-${package_version}-x86_64.pkg.tar.zst"
+                "vortex-linux-${package_version}-x86_64.pkg.tar.zst.sha256"
+                "Vortex-${package_version}-x86_64.AppImage"
+                "Vortex-${package_version}-x86_64.AppImage.sha256"
+              )
+              release_needed=false
+              for required_asset in "${required_assets[@]}"; do
+                if ! jq -e --arg name "$required_asset" \
+                    '.assets | any(.name == $name)' "$release_json" >/dev/null; then
+                  release_needed=true
+                  break
+                fi
+              done
+            fi
+          fi
+
+          printf 'changed=%s\n' "$metadata_changed" >> "$GITHUB_OUTPUT"
+          printf 'release_needed=%s\n' "$release_needed" >> "$GITHUB_OUTPUT"
+          printf 'package_version=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
+          printf 'package_revision=%s\n' "$package_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tested package metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: vortex-release-source
+          path: |
+            PKGBUILD
+            .SRCINFO
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  build-package:
+    name: Build Linux release artifacts
+    needs:
+      - compatibility
+      - prepare-release
+    if: >-
+      ${{
+        needs.compatibility.result == 'success' &&
+        needs.prepare-release.result == 'success' &&
         (
           github.event_name == 'pull_request' ||
           (
             github.ref == 'refs/heads/master' &&
             (
               github.event_name == 'push' ||
-              (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
+              (
+                github.event_name == 'schedule' &&
+                needs.prepare-release.outputs.release_needed == 'true'
+              ) ||
+              (
+                github.event_name == 'workflow_dispatch' &&
+                (
+                  inputs.upstream_ref == 'pinned' ||
+                  (
+                    inputs.upstream_ref == 'latest' &&
+                    needs.prepare-release.outputs.release_needed == 'true'
+                  )
+                )
+              )
             )
           )
         )
@@ -140,6 +253,15 @@ jobs:
     steps:
       - name: Check out packaging repository
         uses: actions/checkout@v6
+
+      - name: Use tested package metadata
+        uses: actions/download-artifact@v5
+        with:
+          name: vortex-release-source
+          path: release-source
+
+      - name: Install tested package metadata
+        run: install -m644 release-source/PKGBUILD release-source/.SRCINFO .
 
       - name: Install package dependencies
         run: |
@@ -209,25 +331,90 @@ jobs:
       - name: Verify and start AppImage in a clean container
         run: |
           (
-            cd dist
+            cd dist || exit 1
             sha256sum --check "${{ needs.build-package.outputs.appimage_checksum }}"
           )
           scripts/test-appimage.sh "dist/${{ needs.build-package.outputs.appimage_archive }}"
 
-  publish-package:
-    name: Publish Linux release
+  finalize-source:
+    name: Record tested upstream release
     needs:
       - compatibility
+      - prepare-release
       - build-package
       - test-appimage
     if: >-
       ${{
         needs.test-appimage.result == 'success' &&
         github.ref == 'refs/heads/master' &&
-        (
-          github.event_name == 'push' ||
-          (github.event_name == 'workflow_dispatch' && inputs.upstream_ref == 'pinned')
-        )
+        needs.prepare-release.outputs.release_needed == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      source_commit: ${{ steps.source.outputs.source_commit }}
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - name: Download tested package metadata
+        if: ${{ needs.prepare-release.outputs.changed == 'true' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: vortex-release-source
+          path: release-source
+
+      - name: Commit the tested version bump
+        id: source
+        env:
+          METADATA_CHANGED: ${{ needs.prepare-release.outputs.changed }}
+          PACKAGE_VERSION: ${{ needs.prepare-release.outputs.package_version }}
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          source_commit="$EXPECTED_HEAD"
+          if [[ "$METADATA_CHANGED" == true ]]; then
+            remote_head="$(git ls-remote origin refs/heads/master | cut -f1)"
+            local_head="$(git rev-parse HEAD)"
+            if [[ "$remote_head" != "$EXPECTED_HEAD" || "$local_head" != "$EXPECTED_HEAD" ]]; then
+              printf '::error::master changed during the build (expected %s, remote %s, local %s). The next scheduled run will retry.\n' \
+                "$EXPECTED_HEAD" "$remote_head" "$local_head"
+              exit 1
+            fi
+
+            install -m644 release-source/PKGBUILD release-source/.SRCINFO .
+            git diff --check
+            git add PKGBUILD .SRCINFO
+            if git diff --cached --quiet; then
+              echo 'Expected updated package metadata, but there is nothing to commit' >&2
+              exit 1
+            fi
+
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m "Update Vortex to ${PACKAGE_VERSION}"
+            git push origin HEAD:master
+            source_commit="$(git rev-parse HEAD)"
+          fi
+
+          printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+          printf '### Tested packaging source\n\nCommit: `%s`\n' \
+            "$source_commit" >> "$GITHUB_STEP_SUMMARY"
+
+  publish-package:
+    name: Publish Linux release
+    needs:
+      - compatibility
+      - prepare-release
+      - build-package
+      - test-appimage
+      - finalize-source
+    if: >-
+      ${{
+        needs.finalize-source.result == 'success'
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -242,6 +429,7 @@ jobs:
       APPIMAGE_ARCHIVE: ${{ needs.build-package.outputs.appimage_archive }}
       APPIMAGE_CHECKSUM: ${{ needs.build-package.outputs.appimage_checksum }}
       UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
+      SOURCE_COMMIT: ${{ needs.finalize-source.outputs.source_commit }}
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@v5
@@ -264,7 +452,7 @@ jobs:
           - Version: \`${PACKAGE_VERSION}\`
           - Package revision: \`${PACKAGE_REVISION}\`
           - Upstream commit: \`${UPSTREAM_COMMIT}\`
-          - Packaging source: https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}
+          - Packaging source: https://github.com/${GITHUB_REPOSITORY}/tree/${SOURCE_COMMIT}
           - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
           ## Arch Linux
@@ -301,9 +489,9 @@ jobs:
             cat "$target_tag_response" >&2
             exit 1
           fi
-          if [[ -n "$target_tag_sha" && "$target_tag_sha" != "$GITHUB_SHA" ]]; then
+          if [[ -n "$target_tag_sha" && "$target_tag_sha" != "$SOURCE_COMMIT" ]]; then
             printf '::error::Release tag %s already points to %s; bump pkgrel before publishing %s.\n' \
-              "$RELEASE_TAG" "$target_tag_sha" "$GITHUB_SHA"
+              "$RELEASE_TAG" "$target_tag_sha" "$SOURCE_COMMIT"
             exit 1
           fi
 
@@ -338,7 +526,7 @@ jobs:
               "dist/$APPIMAGE_ARCHIVE" \
               "dist/$APPIMAGE_CHECKSUM" \
               --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
+              --target "$SOURCE_COMMIT" \
               --title "Vortex for Linux ${PACKAGE_REVISION}" \
               --notes-file release-notes.md \
               --latest
@@ -353,9 +541,15 @@ jobs:
             "$RELEASE_TAG" "$release_url" >> "$GITHUB_STEP_SUMMARY"
 
   compatibility-issue:
-    name: Maintain compatibility issue
-    needs: compatibility
-    if: ${{ always() && github.event_name == 'schedule' && needs.compatibility.result != 'cancelled' }}
+    name: Report automatic update failure
+    needs:
+      - compatibility
+      - prepare-release
+      - build-package
+      - test-appimage
+      - finalize-source
+      - publish-package
+    if: ${{ always() && github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -363,14 +557,20 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
-      ISSUE_TITLE: "[CI] Vortex upstream compatibility failed"
+      ISSUE_TITLE: "[CI] Automatic Vortex update failed"
       UPSTREAM_REF: ${{ needs.compatibility.outputs.upstream_ref }}
       UPSTREAM_COMMIT: ${{ needs.compatibility.outputs.upstream_commit }}
       UPSTREAM_URL: ${{ needs.compatibility.outputs.upstream_url }}
+      RELEASE_NEEDED: ${{ needs.prepare-release.outputs.release_needed }}
+      COMPATIBILITY_STATUS: ${{ needs.compatibility.result }}
+      PREPARE_STATUS: ${{ needs.prepare-release.result }}
+      BUILD_STATUS: ${{ needs.build-package.result }}
+      APPIMAGE_STATUS: ${{ needs.test-appimage.result }}
+      FINALIZE_STATUS: ${{ needs.finalize-source.result }}
+      PUBLISH_STATUS: ${{ needs.publish-package.result }}
       RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Open or update failure issue
-        if: ${{ needs.compatibility.result == 'failure' }}
+      - name: Open, update, or close the failure issue
         run: |
           issue_number="$(gh issue list \
             --repo "$GITHUB_REPOSITORY" \
@@ -379,42 +579,78 @@ jobs:
             --json number,title \
             --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
 
-          issue_body="$(mktemp)"
-          printf '%s\n' \
-            'The scheduled compatibility check against the latest stable Vortex release failed.' \
-            '' \
-            "- Upstream ref: \`${UPSTREAM_REF:-unresolved}\`" \
-            "- Upstream commit: \`${UPSTREAM_COMMIT:-unresolved}\`" \
-            "- Release: ${UPSTREAM_URL:-unresolved}" \
-            "- Workflow run: ${RUN_URL}" \
-            '' \
-            'The run log identifies the first patch, test, or typecheck that needs attention.' \
-            > "$issue_body"
-
-          if [[ -n "$issue_number" ]]; then
-            gh issue edit "$issue_number" \
-              --repo "$GITHUB_REPOSITORY" \
-              --body-file "$issue_body"
-          else
-            gh issue create \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "$ISSUE_TITLE" \
-              --body-file "$issue_body"
+          statuses=(
+            "$COMPATIBILITY_STATUS"
+            "$PREPARE_STATUS"
+            "$BUILD_STATUS"
+            "$APPIMAGE_STATUS"
+            "$FINALIZE_STATUS"
+            "$PUBLISH_STATUS"
+          )
+          failed=false
+          for status in "${statuses[@]}"; do
+            if [[ "$status" == failure || "$status" == cancelled ]]; then
+              failed=true
+              break
+            fi
+          done
+          if [[ "$failed" == false ]]; then
+            case "$RELEASE_NEEDED" in
+              true)
+                required_statuses=(
+                  "$BUILD_STATUS"
+                  "$APPIMAGE_STATUS"
+                  "$FINALIZE_STATUS"
+                  "$PUBLISH_STATUS"
+                )
+                for status in "${required_statuses[@]}"; do
+                  if [[ "$status" != success ]]; then
+                    failed=true
+                    break
+                  fi
+                done
+                ;;
+              false)
+                ;;
+              *)
+                failed=true
+                ;;
+            esac
           fi
 
-      - name: Close recovered compatibility issue
-        if: ${{ needs.compatibility.result == 'success' }}
-        run: |
-          issue_number="$(gh issue list \
-            --repo "$GITHUB_REPOSITORY" \
-            --state open \
-            --search "\"$ISSUE_TITLE\" in:title" \
-            --json number,title \
-            --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
+          if [[ "$failed" == true ]]; then
+            issue_body="$(mktemp)"
+            printf '%s\n' \
+              'The unattended update against the latest stable Vortex release failed.' \
+              '' \
+              "- Upstream ref: \`${UPSTREAM_REF:-unresolved}\`" \
+              "- Upstream commit: \`${UPSTREAM_COMMIT:-unresolved}\`" \
+              "- Release: ${UPSTREAM_URL:-unresolved}" \
+              "- Release required: \`${RELEASE_NEEDED:-unresolved}\`" \
+              "- Patch tests: \`${COMPATIBILITY_STATUS}\`" \
+              "- Metadata: \`${PREPARE_STATUS}\`" \
+              "- Package build: \`${BUILD_STATUS}\`" \
+              "- AppImage smoke test: \`${APPIMAGE_STATUS}\`" \
+              "- Source update: \`${FINALIZE_STATUS}\`" \
+              "- Release publish: \`${PUBLISH_STATUS}\`" \
+              "- Workflow run: ${RUN_URL}" \
+              '' \
+              'The failed job log identifies the patch, test, build, or publication step that needs attention.' \
+              > "$issue_body"
 
-          if [[ -n "$issue_number" ]]; then
+            if [[ -n "$issue_number" ]]; then
+              gh issue edit "$issue_number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --body-file "$issue_body"
+            else
+              gh issue create \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "$ISSUE_TITLE" \
+                --body-file "$issue_body"
+            fi
+          elif [[ -n "$issue_number" ]]; then
             gh issue close "$issue_number" \
               --repo "$GITHUB_REPOSITORY" \
               --reason completed \
-              --comment "Compatibility is restored for \`${UPSTREAM_REF}\`. [Passing run](${RUN_URL})."
+              --comment "Automatic updates are healthy again for \`${UPSTREAM_REF:-the latest release}\`. [Passing run](${RUN_URL})."
           fi

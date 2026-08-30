@@ -2,7 +2,8 @@
 
 set -Eeuo pipefail
 
-readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly PKGBUILD_PATH="${REPOSITORY_ROOT}/PKGBUILD"
 
 requested_ref="latest"
@@ -50,6 +51,8 @@ read_pkgbuild_value() {
   printf '%s' "$value"
 }
 
+pinned_commit="$(read_pkgbuild_value _upstream_commit)"
+
 read_patch_series() {
   local inside=false
   local line
@@ -92,6 +95,7 @@ write_summary() {
 - Requested ref: \`${requested_ref}\`
 - Resolved ref: \`${resolved_ref}\`
 - Commit: \`${upstream_commit}\`
+- Different from pinned commit: \`${upstream_changed}\`
 - Patches applied: ${#patches[@]}
 - Node.js: \`${node_version}\`
 - pnpm: \`${pnpm_version}\`
@@ -187,6 +191,11 @@ fi
 git -C "$worktree" -c advice.detachedHead=false checkout --quiet --detach FETCH_HEAD
 
 upstream_commit="$(git -C "$worktree" rev-parse HEAD)"
+if [[ "$upstream_commit" == "$pinned_commit" ]]; then
+  upstream_changed=false
+else
+  upstream_changed=true
+fi
 node_version="$(jq -r \
   '.devEngines.runtime.version // .volta.node // .engines.node // empty' \
   "$worktree/package.json")"
@@ -194,8 +203,10 @@ pnpm_version="$(jq -r \
   '.packageManager // empty | capture("^pnpm@(?<version>[^+]+)").version' \
   "$worktree/package.json")"
 
-if [[ -z "$node_version" || -z "$pnpm_version" ]]; then
-  printf 'Unable to determine Node.js or pnpm version from upstream package.json\n' >&2
+if [[ ! "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || \
+    ! "$pnpm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+  printf 'Upstream package.json contains an unsupported Node.js or pnpm version: %s / %s\n' \
+    "${node_version:-missing}" "${pnpm_version:-missing}" >&2
   exit 1
 fi
 
@@ -205,6 +216,7 @@ write_output requested_ref "$requested_ref"
 write_output upstream_ref "$resolved_ref"
 write_output upstream_commit "$upstream_commit"
 write_output upstream_url "$release_url"
+write_output upstream_changed "$upstream_changed"
 write_output node_version "$node_version"
 write_output pnpm_version "$pnpm_version"
 write_output worktree "$worktree"
