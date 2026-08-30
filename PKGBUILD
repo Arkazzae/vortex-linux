@@ -36,7 +36,6 @@ depends=(
   'xdg-utils'
 )
 makedepends=(
-  'corepack'
   'dotnet-sdk'
   'git'
   'nodejs-lts-krypton'
@@ -58,24 +57,30 @@ _activate_upstream_pnpm() {
     printf 'Unable to determine the pnpm version required by upstream\n' >&2
     return 1
   fi
+  if [[ "$expected_pnpm" != "$_pnpm" ]]; then
+    printf 'Upstream requires pnpm %s, but PKGBUILD provides %s\n' \
+      "$expected_pnpm" "$_pnpm" >&2
+    return 1
+  fi
 
-  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-  export COREPACK_HOME="$srcdir/corepack-cache"
-  mkdir -p "$srcdir/corepack-bin" "$COREPACK_HOME"
-  if ! command -v corepack >/dev/null 2>&1; then
-    printf 'Corepack is required to activate upstream pnpm %s\n' "$expected_pnpm" >&2
+  local pnpm_root="$srcdir/pnpm-cli-$_pnpm"
+  local pnpm_bin="$pnpm_root/package/bin"
+  if [[ ! -f "$pnpm_bin/pnpm.cjs" ]]; then
+    mkdir -p "$pnpm_root"
+    bsdtar -xf "$srcdir/pnpm-$_pnpm.tgz" -C "$pnpm_root"
+  fi
+  if [[ ! -f "$pnpm_bin/pnpm.cjs" ]]; then
+    printf 'The pnpm %s source archive is incomplete\n' "$_pnpm" >&2
     return 1
   fi
-  if ! corepack enable --install-directory "$srcdir/corepack-bin" pnpm; then
-    printf 'Unable to create the Corepack pnpm shim\n' >&2
-    return 1
-  fi
-  export PATH="$srcdir/corepack-bin:$PATH"
+  chmod 755 "$pnpm_bin/pnpm.cjs"
+  ln -sfn pnpm.cjs "$pnpm_bin/pnpm"
+  export PATH="$pnpm_bin:$PATH"
 
   local actual_pnpm
-  actual_pnpm="$("$srcdir/corepack-bin/pnpm" --version)" || return 1
+  actual_pnpm="$("$pnpm_bin/pnpm" --version)" || return 1
   if [[ "$actual_pnpm" != "$expected_pnpm" ]]; then
-    printf 'Upstream requires pnpm %s, but Corepack activated %s\n' \
+    printf 'Upstream requires pnpm %s, but the source archive provides %s\n' \
       "$expected_pnpm" "$actual_pnpm" >&2
     return 1
   fi
@@ -90,6 +95,7 @@ options=('!debug' '!strip')
 install=vortex.install
 
 _upstream_commit='af2fd1945e32ec3fabb9acdc117433e228ffdcca'
+_pnpm='11.10.0'
 _dotnet6='6.0.36'
 _dotnet8='8.0.29'
 _dotnet10='10.0.10'
@@ -114,6 +120,7 @@ _patches=(
 
 source=(
   "vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=${_upstream_commit}"
+  "pnpm-${_pnpm}.tgz::https://registry.npmjs.org/pnpm/-/pnpm-${_pnpm}.tgz"
   "${_patches[@]}"
   'vortex.sh'
   'vortex.desktop'
@@ -127,6 +134,7 @@ source=(
   "windowsdesktop-runtime-${_dotnet10}-win-x64.zip::https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/${_dotnet10}/windowsdesktop-runtime-${_dotnet10}-win-x64.zip"
 )
 noextract=(
+  "pnpm-${_pnpm}.tgz"
   "dotnet-runtime-${_dotnet6}-win-x64.zip"
   "dotnet-runtime-${_dotnet8}-win-x64.zip"
   "dotnet-runtime-${_dotnet10}-win-x64.zip"
@@ -135,9 +143,12 @@ noextract=(
   "windowsdesktop-runtime-${_dotnet10}-win-x64.zip"
 )
 sha512sums=(
-  # Vortex is pinned by _upstream_commit; all following local files are versioned
-  # together with this PKGBUILD, so hashing them only duplicates Git integrity.
+  # Vortex is pinned by _upstream_commit.
   'SKIP'
+  # pnpm is executed during the build, so keep its upstream archive verifiable.
+  '0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8'
+  # All following local files are versioned together with this PKGBUILD, so
+  # hashing them only duplicates Git integrity.
   'SKIP'
   'SKIP'
   'SKIP'

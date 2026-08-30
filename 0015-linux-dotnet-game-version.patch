@@ -1,9 +1,9 @@
 diff --git a/src/renderer/src/extensions/gameversion_management/util/getGameVersion.linux.test.ts b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.linux.test.ts
 new file mode 100644
-index 000000000..064b8af57
+index 0000000..b0a5a09
 --- /dev/null
 +++ b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.linux.test.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,102 @@
 +import * as fs from "node:fs";
 +import * as os from "node:os";
 +import * as path from "node:path";
@@ -61,13 +61,32 @@ index 000000000..064b8af57
 +    ).resolves.toBe("1.6.15-beta.2");
 +  });
 +
++  it("prefers an adjacent manifest when the executable is in a subdirectory", async () => {
++    const executableDirectory = path.join(gamePath, "bin");
++    const executablePath = path.join(executableDirectory, "Example Game");
++    fs.mkdirSync(executableDirectory);
++    fs.writeFileSync(executablePath, "not-a-pe-binary");
++    fs.writeFileSync(
++      path.join(executableDirectory, "Example Game.deps.json"),
++      JSON.stringify({ libraries: { "Example Game/2.3.4": {} } }),
++    );
++    writeManifest("Example Game.deps.json", {
++      libraries: { "Example Game/1.0.0": {} },
++    });
++    discovery.executable = path.join("bin", "Example Game");
++
++    await expect(getDotNetGameVersion(gamePath, executablePath)).resolves.toBe("2.3.4");
++    await expect(testExecProvider(game, discovery)).resolves.toBe(true);
++    await expect(getExecGameVersion(game, discovery)).resolves.toBe("2.3.4");
++  });
++
 +  it("ignores invalid, zero, and unrelated manifest versions", async () => {
 +    fs.writeFileSync(path.join(gamePath, "Broken.deps.json"), "not-json");
 +    writeManifest("Stardew Valley.deps.json", {
 +      libraries: {
 +        "Stardew Valley/0.0.0": {},
 +        "Other Game/9.9.9": {},
-+        "MissingVersion": {},
++        MissingVersion: {},
 +      },
 +    });
 +
@@ -88,10 +107,10 @@ index 000000000..064b8af57
 +  });
 +});
 diff --git a/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
-index b0dcb4f71..5ca6c0ffc 100644
+index b0dcb4f..909b894 100644
 --- a/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
 +++ b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
-@@ -1,13 +1,103 @@
+@@ -1,13 +1,111 @@
 +import * as path from "path";
 +
  import type * as exeVersionT from "exe-version";
@@ -141,44 +160,52 @@ index b0dcb4f71..5ca6c0ffc 100644
 +    return undefined;
 +  }
 +
-+  let manifests: string[];
-+  try {
-+    manifests = (await readdirAsync(gamePath))
-+      .filter((fileName) => fileName.toLowerCase().endsWith(".deps.json"))
-+      .sort((lhs, rhs) => lhs.localeCompare(rhs));
-+  } catch {
-+    return undefined;
-+  }
-+
++  const resolvedExecutablePath = path.isAbsolute(executablePath)
++    ? executablePath
++    : path.resolve(gamePath, executablePath);
++  const executableDirectory = path.dirname(resolvedExecutablePath);
++  const manifestDirectories = Array.from(new Set([executableDirectory, path.resolve(gamePath)]));
 +  let bestMatch: { score: number; version: string } | undefined;
-+  for (const manifest of manifests) {
-+    const manifestName = normalizedApplicationName(manifest.slice(0, -".deps.json".length));
++  for (const [directoryIndex, manifestDirectory] of manifestDirectories.entries()) {
++    let manifests: string[];
 +    try {
-+      const contents = await readFileAsync(path.join(gamePath, manifest), "utf8");
-+      const parsed = JSON.parse(contents);
-+      const libraries = parsed?.libraries;
-+      if (libraries === null || typeof libraries !== "object" || Array.isArray(libraries)) {
-+        continue;
-+      }
-+
-+      for (const library of Object.keys(libraries)) {
-+        const separator = library.lastIndexOf("/");
-+        if (separator <= 0) {
-+          continue;
-+        }
-+        const libraryName = normalizedApplicationName(library.slice(0, separator));
-+        const version = library.slice(separator + 1);
-+        if (libraryName !== applicationName || !knownVersion(version)) {
-+          continue;
-+        }
-+
-+        const score = manifestName === applicationName ? 2 : 1;
-+        if (bestMatch === undefined || score > bestMatch.score) {
-+          bestMatch = { score, version };
-+        }
-+      }
++      manifests = (await readdirAsync(manifestDirectory))
++        .filter((fileName) => fileName.toLowerCase().endsWith(".deps.json"))
++        .sort((lhs, rhs) => lhs.localeCompare(rhs));
 +    } catch {
-+      // A game directory may contain unrelated or partially-written manifests.
++      continue;
++    }
++
++    for (const manifest of manifests) {
++      const manifestName = normalizedApplicationName(manifest.slice(0, -".deps.json".length));
++      try {
++        const contents = await readFileAsync(path.join(manifestDirectory, manifest), "utf8");
++        const parsed = JSON.parse(contents);
++        const libraries = parsed?.libraries;
++        if (libraries === null || typeof libraries !== "object" || Array.isArray(libraries)) {
++          continue;
++        }
++
++        for (const library of Object.keys(libraries)) {
++          const separator = library.lastIndexOf("/");
++          if (separator <= 0) {
++            continue;
++          }
++          const libraryName = normalizedApplicationName(library.slice(0, separator));
++          const version = library.slice(separator + 1);
++          if (libraryName !== applicationName || !knownVersion(version)) {
++            continue;
++          }
++
++          const directoryScore = manifestDirectories.length - directoryIndex;
++          const score = directoryScore * 2 + (manifestName === applicationName ? 1 : 0);
++          if (bestMatch === undefined || score > bestMatch.score) {
++            bestMatch = { score, version };
++          }
++        }
++      } catch {
++        // A game directory may contain unrelated or partially-written manifests.
++      }
 +    }
 +  }
 +
@@ -196,7 +223,7 @@ index b0dcb4f71..5ca6c0ffc 100644
  
  export async function testExtProvider(game: IGame, discovery: IDiscoveryResult): Promise<boolean> {
    return Promise.resolve(game.getGameVersion !== undefined);
-@@ -41,12 +131,18 @@ export async function testExecProvider(game: IGame, discovery: IDiscoveryResult
+@@ -41,12 +139,18 @@ export async function testExecProvider(game: IGame, discovery: IDiscoveryResult)
    const exePath = resolvePlatformPath(discovery.path, exeName);
    try {
      await statAsync(exePath);
@@ -217,7 +244,7 @@ index b0dcb4f71..5ca6c0ffc 100644
  }
  
  export async function getExecGameVersion(
-@@ -54,13 +150,16 @@ export async function getExecGameVersion(
+@@ -54,13 +158,16 @@ export async function getExecGameVersion(
    discovery: IDiscoveryResult,
  ): Promise<string> {
    if (discovery?.path === undefined) {
