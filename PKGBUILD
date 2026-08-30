@@ -108,6 +108,7 @@ _patches=(
   '0012-linux-extension-path-compatibility.patch'
   '0013-linux-win32-normalize-compatibility.patch'
   '0014-linux-epic-extension-api.patch'
+  '0015-linux-dotnet-game-version.patch'
 )
 
 source=(
@@ -135,6 +136,7 @@ noextract=(
 sha512sums=(
   # Vortex is pinned by _upstream_commit; all following local files are versioned
   # together with this PKGBUILD, so hashing them only duplicates Git integrity.
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
