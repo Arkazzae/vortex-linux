@@ -1,6 +1,7 @@
 src/
 pkg/
 *.pkg.tar.*
+*.tgz
 *.zip
 *.AppImage
 dist/

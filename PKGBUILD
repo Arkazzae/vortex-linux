@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.6.2
-pkgrel=2
+pkgrel=3
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -235,8 +235,31 @@ build() {
   local leveldown_dir="$srcdir/vortex/src/main/dist/node_modules/leveldown"
   local leveldown_build="$leveldown_dir/build/Release/leveldown.node"
   local leveldown_prebuild="$leveldown_dir/prebuilds/linux-x64/node.napi.glibc.node"
+  # Old LevelDB/Snappy code miscompiles with aggressive local ISA flags such
+  # as -march=native on some toolchains and then crashes while compressing the
+  # state database. Rebuild this addon for the portable x86-64 baseline even
+  # when the host makepkg.conf requests x86-64-v3 or newer instructions.
+  local leveldown_cflags='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -fexceptions -Wp,-D_FORTIFY_SOURCE=3 -Wformat -Werror=format-security -fstack-clash-protection -fcf-protection'
+  (
+    cd "$leveldown_dir"
+    CFLAGS="$leveldown_cflags" \
+      CXXFLAGS="$leveldown_cflags -Wp,-D_GLIBCXX_ASSERTIONS" \
+      npm_config_runtime='electron' \
+      npm_config_target='43.0.0' \
+      npm_config_disturl='https://electronjs.org/headers' \
+      "$srcdir/vortex/src/main/dist/node_modules/.bin/node-gyp" rebuild
+  )
   if [[ ! -f "$leveldown_build" || ! -f "$leveldown_prebuild" ]]; then
     printf 'The rebuilt or prebuilt leveldown addon is missing\n' >&2
+    return 1
+  fi
+  local leveldown_isa
+  leveldown_isa="$(
+    readelf --notes "$leveldown_build" \
+      | sed -n 's/^[[:space:]]*x86 ISA used: //p'
+  )"
+  if [[ "$leveldown_isa" != 'x86-64-baseline' ]]; then
+    printf 'The rebuilt leveldown addon is not portable x86-64\n' >&2
     return 1
   fi
   install -Dm755 "$leveldown_build" "$leveldown_prebuild"
