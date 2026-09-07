@@ -123,6 +123,7 @@ _patches=(
   '0018-linux-ini-support.patch'
   '0019-linux-game-prefix-selection.patch'
   '0020-linux-native-loot.patch'
+  '0021-linux-game-tool-runners.patch'
 )
 
 source=(
@@ -158,6 +159,7 @@ sha512sums=(
   "$_libloot_sha512"
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'

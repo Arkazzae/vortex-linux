@@ -9,7 +9,7 @@ including its regression tests and package metadata where needed.
 - [x] Resolve user folders from the selected game's prefix; cover Flatpak,
   multiple installations, and missing prefixes without guessing by modification time.
 - [x] Build Bethesda plugin management with native Linux LOOT and verify sorting.
-- [ ] Route extension tools through the game's runner and prefix; respect Steam's
+- [x] Route extension tools through the game's runner and prefix; respect Steam's
   default Proton and additional libraries.
 - [ ] Discover and launch Heroic games from native and Flatpak installations,
   including Epic, GOG, and Amazon prefixes.
