@@ -55,6 +55,15 @@ bsdtar -xf "$PACKAGE_PATH" -C "$app_directory" \
   usr/share/icons/hicolor/256x256/apps/vortex.png \
   usr/share/licenses/vortex-linux
 
+packaged_version="$(env -u LD_LIBRARY_PATH ELECTRON_RUN_AS_NODE=1 \
+  "$app_directory/opt/Vortex/vortex" -p 'require(process.argv[1]).version' \
+  "$app_directory/opt/Vortex/resources/app.asar/package.json")"
+if [[ "$packaged_version" != "$release_version" ]]; then
+  printf 'Vortex reports version %s, but the package is %s\n' \
+    "$packaged_version" "$release_version" >&2
+  exit 1
+fi
+
 fomod_release_directory="$app_directory/opt/Vortex/resources/app.asar.unpacked/node_modules/@nexusmods/fomod-installer-native/build/Release"
 fomod_node="$fomod_release_directory/modinstaller.node"
 fomod_library="$fomod_release_directory/ModInstaller.Native.so"

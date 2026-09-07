@@ -214,6 +214,15 @@ prepare() {
     patch -Np1 -i "$srcdir/$compatibility_patch"
   done
 
+  node - "$pkgver" <<'NODE'
+const fs = require('node:fs');
+for (const file of ['src/main/package.json', 'packages/vortex-api/package.json']) {
+  const metadata = JSON.parse(fs.readFileSync(file, 'utf8'));
+  metadata.version = process.argv[2];
+  fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n');
+}
+NODE
+
   export npm_config_runtime='electron'
   export npm_config_target='43.0.0'
   export npm_config_disturl='https://electronjs.org/headers'
