@@ -13,8 +13,10 @@ including its regression tests and package metadata where needed.
   default Proton and additional libraries.
 - [x] Discover and launch Heroic games from native and Flatpak installations,
   including Epic, GOG, and Amazon prefixes.
-- [ ] Extend AppImage validation and document its limits. Keep the clean Ubuntu
+- [x] Extend AppImage validation and document its limits. Keep the clean Ubuntu
   check without system .NET; add INI, plugin, prefix, tool, and deployment checks.
+- [x] Synchronize application/API versions with `pkgver` and reject mismatched
+  AppImage inputs.
 
 ## Validation
 
@@ -27,3 +29,6 @@ not establish that every game or collection works.
 
 Existing fixes on `master`, including Vortex user-data protection and native FOMOD
 module loading, must remain covered. No merge or release is part of this work.
+
+Completed checks and remaining manual tests are recorded in
+[the validation report](linux-compatibility-validation.md).
