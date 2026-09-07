@@ -118,6 +118,7 @@ _patches=(
   '0016-linux-gamebryo-archive-support.patch'
   '0017-linux-preserve-vortex-userdata.patch'
   '0018-linux-ini-support.patch'
+  '0019-linux-game-prefix-selection.patch'
 )
 
 source=(
@@ -151,6 +152,7 @@ sha512sums=(
   '0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8'
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'

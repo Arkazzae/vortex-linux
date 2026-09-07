@@ -6,7 +6,7 @@ including its regression tests and package metadata where needed.
 - [x] Check release triggers and create the working branch. Push builds are
   restricted to `master`; pull requests can build artifacts but cannot publish.
 - [x] Implement Linux INI reads and writes with the existing parser API.
-- [ ] Resolve user folders from the selected game's prefix; cover Flatpak,
+- [x] Resolve user folders from the selected game's prefix; cover Flatpak,
   multiple installations, and missing prefixes without guessing by modification time.
 - [ ] Build Bethesda plugin management with native Linux LOOT and verify sorting.
 - [ ] Route extension tools through the game's runner and prefix; respect Steam's
