@@ -90,6 +90,8 @@ if ! "$app_directory/usr/lib/dotnet/dotnet" --list-runtimes \
 fi
 
 install -m755 "$REPOSITORY_ROOT/appimage/AppRun" "$app_directory/AppRun"
+install -Dm644 "$REPOSITORY_ROOT/scripts/test-runtime.cjs" "$app_directory/usr/share/vortex-linux/test-runtime.cjs"
+install -Dm644 "$REPOSITORY_ROOT/scripts/test-loot.cjs" "$app_directory/usr/share/vortex-linux/test-loot.cjs"
 install -m644 \
   "$app_directory/usr/share/icons/hicolor/256x256/apps/vortex.png" \
   "$app_directory/vortex.png"
