@@ -128,6 +128,7 @@ _patches=(
   '0022-linux-heroic-stores.patch'
   '0023-linux-native-build.patch'
   '0024-linux-artifact-self-test.patch'
+  '0025-linux-new-game-config.patch'
 )
 
 source=(
@@ -163,6 +164,7 @@ sha512sums=(
   "$_libloot_sha512"
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'

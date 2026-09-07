@@ -1,0 +1,58 @@
+diff --git a/src/renderer/src/util/compatibilityPaths.ts b/src/renderer/src/util/compatibilityPaths.ts
+index 08729b3..5d4aa4a 100644
+--- a/src/renderer/src/util/compatibilityPaths.ts
++++ b/src/renderer/src/util/compatibilityPaths.ts
+@@ -206,7 +206,11 @@ function windowsUserRoots(relativeRoot: string[]): string[] {
+     try {
+       return fs
+         .readdirSync(users, { withFileTypes: true })
+-        .filter((entry) => entry.isDirectory())
++        .filter(
++          (entry) =>
++            entry.isDirectory() &&
++            !["public", "default", "default user", "all users"].includes(entry.name.toLowerCase()),
++        )
+         .map((entry) => path.join(users, entry.name, ...relativeRoot))
+         .filter(fs.existsSync);
+     } catch {
+@@ -217,6 +221,7 @@ function windowsUserRoots(relativeRoot: string[]): string[] {
+ 
+ function resolveCandidate(root: string, relative: string): ICandidate | undefined {
+   const parts = relative.split(path.sep).filter(Boolean);
++  const selected = gameProvider?.() !== undefined;
+   let current = root;
+   let existingParts = 0;
+ 
+@@ -241,7 +246,7 @@ function resolveCandidate(root: string, relative: string): ICandidate | undefine
+     }
+ 
+     const minimumExistingParts = parts[0]?.toLowerCase() === "my games" ? 2 : 1;
+-    if (existingParts < minimumExistingParts) {
++    if (!selected && existingParts < minimumExistingParts) {
+       return undefined;
+     }
+     return {
+diff --git a/src/renderer/src/util/compatibilitySelection.test.ts b/src/renderer/src/util/compatibilitySelection.test.ts
+index fb672cd..01772d9 100644
+--- a/src/renderer/src/util/compatibilitySelection.test.ts
++++ b/src/renderer/src/util/compatibilitySelection.test.ts
+@@ -36,6 +36,19 @@ describe.runIf(process.platform === "linux")("selected compatibility prefix", ()
+     vi.stubEnv("VORTEX_COMPAT_PREFIXES", "");
+     setCompatibilityGameProvider(undefined);
+   });
++  it("creates new game configuration directories inside the selected prefix", () => {
++    const prefix = path.join(home, "new-prefix");
++    const userDocuments = path.join(prefix, "drive_c/users/steamuser/Documents");
++    fs.mkdirSync(userDocuments, { recursive: true });
++    fs.mkdirSync(path.join(prefix, "drive_c/users/Public/Documents"), { recursive: true });
++    setCompatibilityGameProvider(() => ({ path: home, environment: { WINEPREFIX: prefix } }));
++    const destination = resolveCaseInsensitiveSync(path.join(documents, relative));
++    expect(destination).toBe(path.join(userDocuments, relative));
++    fs.mkdirSync(path.dirname(destination), { recursive: true });
++    fs.writeFileSync(destination, "fixture");
++    expect(fs.existsSync(path.join(documents, relative))).toBe(false);
++  });
++
+   afterEach(() => {
+     setCompatibilityGameProvider(undefined);
+     vi.restoreAllMocks();
