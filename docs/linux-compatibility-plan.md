@@ -11,7 +11,7 @@ including its regression tests and package metadata where needed.
 - [x] Build Bethesda plugin management with native Linux LOOT and verify sorting.
 - [x] Route extension tools through the game's runner and prefix; respect Steam's
   default Proton and additional libraries.
-- [ ] Discover and launch Heroic games from native and Flatpak installations,
+- [x] Discover and launch Heroic games from native and Flatpak installations,
   including Epic, GOG, and Amazon prefixes.
 - [ ] Extend AppImage validation and document its limits. Keep the clean Ubuntu
   check without system .NET; add INI, plugin, prefix, tool, and deployment checks.
