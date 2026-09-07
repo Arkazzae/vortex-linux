@@ -20,7 +20,7 @@ fi
 mapfile -t test_files < <(
   sed -nE \
     's#^diff --git a/([^ ]*\.test\.(ts|tsx)) b/.*#\1#p' \
-    "${REPOSITORY_ROOT}"/[0-9][0-9][0-9][0-9]-*.patch | sort -u
+    "${REPOSITORY_ROOT}"/patches/[0-9][0-9][0-9][0-9]-*.patch | sort -u
 )
 
 if ((${#test_files[@]} == 0)); then

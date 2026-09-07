@@ -87,10 +87,18 @@ The separate prefix for Vortex’s own helper processes still defaults to
 ```sh
 git clone https://github.com/Arkazzae/vortex-linux.git
 cd vortex-linux
+scripts/prepare-arch-build.sh
+cd dist/arch-build
 makepkg -si
 ```
 
 The build pins both Vortex and libloot to exact upstream commits and downloads the source, Node dependencies, Electron and the Microsoft runtime files. First build is a big one.
+
+Patches live in `patches/`, in the order listed by `_patches` in `PKGBUILD`.
+`prepare-arch-build.sh` copies the packaging files and patches into
+`dist/arch-build`, where makepkg keeps its sources and build output. Run it again
+after changing patches or package metadata. `scripts/build-arch-package.sh`
+prepares this directory automatically.
 
 ## How it's tested
 
