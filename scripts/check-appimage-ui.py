@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from contextlib import closing
 import json
 import sys
 import time
@@ -17,7 +18,7 @@ def check_ui():
             for target in targets:
                 if target.get('type') != 'page' or 'index.html' not in target.get('url', ''):
                     continue
-                with websocket.create_connection(target['webSocketDebuggerUrl'], timeout=3, suppress_origin=True) as connection:
+                with closing(websocket.create_connection(target['webSocketDebuggerUrl'], timeout=3, suppress_origin=True)) as connection:
                     connection.send(json.dumps({
                         'id': 1, 'method': 'Runtime.evaluate', 'params': {
                             'expression': '''JSON.stringify({
