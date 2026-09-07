@@ -15,6 +15,7 @@ depends=(
   'cups'
   'dotnet-runtime'
   'gtk3'
+  'fontconfig'
   'libappindicator'
   'libdrm'
   'libnotify'
@@ -125,6 +126,7 @@ _patches=(
   '0020-linux-native-loot.patch'
   '0021-linux-game-tool-runners.patch'
   '0022-linux-heroic-stores.patch'
+  '0023-linux-native-build.patch'
 )
 
 source=(
@@ -186,6 +188,7 @@ sha512sums=(
   'SKIP'
   'SKIP'
   'SKIP'
+  'SKIP'
   # Keep integrity checks for binaries downloaded outside this repository.
   '935db5c6cee19f2c016e67168bfae7b491044735de76c673abb3b125dd325fd5e779d7efe12ba80178d46689ae70a25e558a3fa846417d44c5f4ca256e7f4bf2'
   'e3f31d298a2b674b54c7fc89fb3f06d9645fc5879a54f2ebf2ea20e9ee7ae55f1bfe3284c1f90a591d6be2d6bcd251790ddc27771d65303e7a6a56d331df4632'
@@ -209,6 +212,10 @@ prepare() {
   export npm_config_target='43.0.0'
   export npm_config_disturl='https://electronjs.org/headers'
   pnpm install --frozen-lockfile
+  pnpm --filter @vortex/main exec electron-rebuild \
+    --force --version "$npm_config_target" \
+    --module-dir "$srcdir/vortex/extensions/theme-switcher" \
+    --types prod,dev,optional --only font-scanner
 }
 
 build() {
