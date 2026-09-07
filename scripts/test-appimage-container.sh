@@ -55,7 +55,8 @@ for command_name in dbus-run-session wine xvfb-run; do
 done
 
 printf 'Running AppImage runtime self-test without host .NET\n'
-APPIMAGE_EXTRACT_AND_RUN=1 timeout 30s "$TEST_APPIMAGE" --vortex-self-test
+PREBUILDS_ONLY=1 APPIMAGE_EXTRACT_AND_RUN=1 \
+  timeout 30s "$TEST_APPIMAGE" --vortex-self-test
 
 useradd --create-home --shell /bin/bash vortex-test
 install -o vortex-test -g vortex-test -m755 "$TEST_APPIMAGE" /home/vortex-test/Vortex.AppImage

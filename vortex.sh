@@ -2,7 +2,8 @@
 
 export IGNORE_UPDATES="${IGNORE_UPDATES:-yes}"
 export ELECTRON_TRASH="${ELECTRON_TRASH:-gio}"
-export PREBUILDS_ONLY="${PREBUILDS_ONLY:-1}"
+# FOMOD needs build/Release.
+unset PREBUILDS_ONLY
 
 export VORTEX_DOTNET_WIN_ROOT="${VORTEX_DOTNET_WIN_ROOT:-/opt/Vortex/dotnet-win-x64}"
 export VORTEX_WINEPREFIX="${VORTEX_WINEPREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/vortex-linux/wineprefix}"

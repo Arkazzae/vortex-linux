@@ -228,12 +228,10 @@ build() {
 
   pnpm nx run @vortex/main:publish
 
-  # leveldown 5.6.0 ships an old N-API prebuild which node-gyp-build prefers
-  # over the binary rebuilt for Electron.  Under Electron 43 / Node 24 that
+  # leveldown 5.6.0 ships an old N-API prebuild. Under Electron 43 / Node 24 that
   # prebuild segfaults in snappy::CompressFragment while Vortex updates its
   # metadata database, causing Electron to restart the renderer indefinitely.
-  # Keep prebuild-only resolution for the other native dependencies, but make
-  # leveldown's selected Linux prebuild the binary produced by this build.
+  # Use the rebuilt addon in both lookup locations.
   local leveldown_dir="$srcdir/vortex/src/main/dist/node_modules/leveldown"
   local leveldown_build="$leveldown_dir/build/Release/leveldown.node"
   local leveldown_prebuild="$leveldown_dir/prebuilds/linux-x64/node.napi.glibc.node"

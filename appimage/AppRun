@@ -6,7 +6,8 @@ APPDIR=${APPDIR:-"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"}
 
 export IGNORE_UPDATES="${IGNORE_UPDATES:-yes}"
 export ELECTRON_TRASH="${ELECTRON_TRASH:-gio}"
-export PREBUILDS_ONLY="${PREBUILDS_ONLY:-1}"
+# FOMOD needs build/Release.
+unset PREBUILDS_ONLY
 
 export DOTNET_ROOT="$APPDIR/usr/lib/dotnet"
 export DOTNET_ROOT_X64="$DOTNET_ROOT"
@@ -21,6 +22,7 @@ if [ "${1-}" = "--vortex-self-test" ]; then
   fomod_release="$APPDIR/opt/Vortex/resources/app.asar.unpacked/node_modules/@nexusmods/fomod-installer-native/build/Release"
   fomod_node="$fomod_release/modinstaller.node"
   fomod_library="$fomod_release/ModInstaller.Native.so"
+  fomod_resolver="$APPDIR/opt/Vortex/resources/app.asar/node_modules/@nexusmods/fomod-installer-native/dist/resolve-native.js"
   if [ ! -x "$DOTNET_ROOT/dotnet" ] || [ ! -x "$runtime_probe" ] ||
      [ ! -f "$fomod_node" ] || [ ! -f "$fomod_library" ]; then
     printf 'AppImage runtime self-test failed: bundled runtime files are missing\n' >&2
@@ -28,8 +30,8 @@ if [ "${1-}" = "--vortex-self-test" ]; then
   fi
 
   if ! env -u LD_LIBRARY_PATH ELECTRON_RUN_AS_NODE=1 \
-      "$APPDIR/opt/Vortex/vortex" - "$fomod_node" <<'NODE'
-const fomod = require(process.argv[2]);
+      "$APPDIR/opt/Vortex/vortex" - "$fomod_resolver" <<'NODE'
+const fomod = require(process.argv[2]).addon;
 const result = fomod.ModInstaller.testSupported(
   ["fomod/ModuleConfig.xml"],
   ["XmlScript"],
