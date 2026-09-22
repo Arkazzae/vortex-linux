@@ -80,6 +80,14 @@ plugins:
     assert.equal((await call('getPluginMetadata', 'Alpha.esp')).group, 'default');
     await call('loadLists', masterlist, '', '');
     assert.equal((await call('getPluginMetadata', 'Alpha.esp')).group, 'late');
+    fs.writeFileSync(userlist, 'plugins:\n  - name: Beta.esp\n    after: [Alpha.esp]\n');
+    await call('loadLists', masterlist, userlist, '');
+    const cycleError = await call('sortPlugins', ['alpha.esp', 'beta.esp', 'skyrim.esm']).then(
+      () => assert.fail('A cyclic load order was sorted'), (error) => error);
+    assert.match(cycleError.message, /^Cyclic interaction/);
+    assert.deepEqual(new Set(cycleError.cycle.map((vertex) => vertex.name)), new Set(['Alpha.esp', 'Beta.esp']));
+    assert.ok(cycleError.cycle.some((vertex) => vertex.typeOfEdgeToNextVertex === 'userlistLoadAfter'), JSON.stringify(cycleError.cycle));
+    await call('loadLists', masterlist, '', '');
     fs.writeFileSync(path.join(data, 'New.esp.ghost'), plugin());
     await call('loadPlugins', ['new.esp'], true);
     assert.equal((await call('getPlugin', 'new.esp')).name, 'New.esp');
@@ -90,7 +98,7 @@ plugins:
     loot.close();
     await assert.rejects(pending, /closed/);
     await assert.rejects(call('clearConditionCache'), /closed/);
-    console.log('Native LOOT: sorting, metadata, casing, ghost plugins and worker shutdown passed');
+    console.log('Native LOOT: sorting, metadata, cycles, casing, ghost plugins and worker shutdown passed');
   } finally {
     loot?.close();
     fs.rmSync(root, { recursive: true, force: true });

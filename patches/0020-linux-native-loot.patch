@@ -67,22 +67,22 @@ index 8a5a0d2..96da12e 100644
            this.fork,
 diff --git a/extensions/gamebryo-plugin-management/src/native/libloot-adapter.ts b/extensions/gamebryo-plugin-management/src/native/libloot-adapter.ts
 new file mode 100644
-index 0000000..c86bb7e
+index 0000000..144d615
 --- /dev/null
 +++ b/extensions/gamebryo-plugin-management/src/native/libloot-adapter.ts
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,122 @@
 +import { fork, type ChildProcess } from "node:child_process";
 +import * as path from "node:path";
 +
 +type Callback = (error: Error | null, result?: any) => void;
-+interface Pending {
-+  callback: Callback;
-+  timer: NodeJS.Timeout;
++interface IWorkerError {
++  message: string;
++  cycle?: Array<{ name: string; typeOfEdgeToNextVertex: string }>;
 +}
 +
 +export class LootAsync {
 +  private worker: ChildProcess;
-+  private pending = new Map<number, Pending>();
++  private pending = new Map<number, Callback>();
 +  private sequence = 0;
 +  private closed = false;
 +
@@ -96,16 +96,22 @@ index 0000000..c86bb7e
 +    this.worker.stderr?.on("data", (chunk) => {
 +      stderr = (stderr + chunk.toString()).slice(-8192);
 +    });
-+    this.worker.on("message", (message: { id: number; error?: string; result?: any }) => {
-+      const pending = this.pending.get(message.id);
-+      if (pending === undefined) return;
++    this.worker.on("message", (message: { id: number; error?: IWorkerError; result?: any }) => {
++      const callback = this.pending.get(message.id);
++      if (callback === undefined) return;
 +      this.pending.delete(message.id);
-+      clearTimeout(pending.timer);
-+      pending.callback(message.error ? new Error(message.error) : null, message.result);
++      if (message.error === undefined) {
++        callback(null, message.result);
++      } else {
++        const { message: text, ...details } = message.error;
++        callback(Object.assign(new Error(text), details));
++      }
 +    });
 +    this.worker.on("error", (error) => this.close(error));
 +    this.worker.on("exit", (code, signal) => {
-+      this.close(new Error(`LOOT exited (${signal ?? code}): ${stderr.trim()}`));
++      const error = new Error(`LOOT exited (${signal ?? code}): ${stderr.trim()}`);
++      error.name = "RemoteDied";
++      this.close(error);
 +    });
 +  }
 +
@@ -140,9 +146,8 @@ index 0000000..c86bb7e
 +    this.worker.kill();
 +    const pending = [...this.pending.values()];
 +    this.pending.clear();
-+    for (const request of pending) {
-+      clearTimeout(request.timer);
-+      request.callback(error);
++    for (const callback of pending) {
++      callback(error);
 +    }
 +  }
 +
@@ -152,8 +157,7 @@ index 0000000..c86bb7e
 +      return;
 +    }
 +    const id = ++this.sequence;
-+    const timer = setTimeout(() => this.close(new Error(`LOOT timed out: ${method}`)), 120_000);
-+    this.pending.set(id, { callback, timer });
++    this.pending.set(id, callback);
 +    this.worker.send({ id, method, args }, (error) => {
 +      if (error) this.close(error);
 +    });
@@ -191,10 +195,10 @@ index 0000000..c86bb7e
 +}
 diff --git a/extensions/gamebryo-plugin-management/src/native/libloot-worker.cjs b/extensions/gamebryo-plugin-management/src/native/libloot-worker.cjs
 new file mode 100644
-index 0000000..c7bd79b
+index 0000000..774a913
 --- /dev/null
 +++ b/extensions/gamebryo-plugin-management/src/native/libloot-worker.cjs
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,249 @@
 +const fs = require("node:fs");
 +const path = require("node:path");
 +const binding = require("./libloot.node");
@@ -384,6 +388,56 @@ index 0000000..c7bd79b
 +    },
 +};
 +
++// libloot's Node binding only reports messages, so rebuild the cycle that
++// Vortex needs to offer solutions from the vertices printed in the message.
++const edgeTypeNames = new Map(
++    [
++        "Hardcoded",
++        "Master Flag",
++        "Master",
++        "Masterlist Requirement",
++        "User Requirement",
++        "Masterlist Load After",
++        "User Load After",
++        "Masterlist Group",
++        "User Group",
++        "Record Overlap",
++        "Asset Overlap",
++        "Tie Break",
++        "Blueprint Master",
++    ].map((name, index) => [name, edgeTypes[index]]),
++);
++
++function parseCycle(description) {
++    const cycle = [];
++    const edge = /(.+?) --\[([^\]]+)\]-> /y;
++    let end = 0;
++    let match;
++    while ((match = edge.exec(description)) !== null) {
++        const typeOfEdgeToNextVertex = edgeTypeNames.get(match[2]);
++        if (typeOfEdgeToNextVertex === undefined) return undefined;
++        cycle.push({ name: match[1], typeOfEdgeToNextVertex });
++        end = edge.lastIndex;
++    }
++    return cycle.length > 0 && description.slice(end) === cycle[0].name
++        ? cycle
++        : undefined;
++}
++
++function serializeError(error) {
++    const message = String(error?.message ?? error);
++    // Sorting reports "found a cycle: ..."; group paths use "cyclic interaction detected: ...".
++    const match = /(?:found a cycle|cyclic interaction detected): (.*)$/is.exec(message);
++    if (match !== null) {
++        const description = match[1];
++        const cycle = parseCycle(description);
++        if (cycle !== undefined) {
++            return { message: `Cyclic interaction detected: ${description}`, cycle };
++        }
++    }
++    return { message };
++}
++
 +process.on("disconnect", () => process.exit(0));
 +process.on("message", ({ id, method, args }) => {
 +    try {
@@ -391,7 +445,7 @@ index 0000000..c7bd79b
 +        const result = methods[method](...args);
 +        process.send({ id, result });
 +    } catch (error) {
-+        process.send({ id, error: error.message });
++        process.send({ id, error: serializeError(error) });
 +    }
 +});
 diff --git a/src/renderer/src/util/fs.ts b/src/renderer/src/util/fs.ts
