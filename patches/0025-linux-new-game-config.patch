@@ -1,5 +1,5 @@
 diff --git a/src/renderer/src/util/compatibilityPaths.ts b/src/renderer/src/util/compatibilityPaths.ts
-index 08729b3..f32f945 100644
+index 08729b3..f4d5dc6 100644
 --- a/src/renderer/src/util/compatibilityPaths.ts
 +++ b/src/renderer/src/util/compatibilityPaths.ts
 @@ -18,7 +18,12 @@ export interface CompatibilityGame {
@@ -85,28 +85,53 @@ index 08729b3..f32f945 100644
      }
      return [prefix];
    }
-@@ -200,13 +212,17 @@ function compatibilityPrefixes(): string[] {
+@@ -200,14 +212,40 @@ function compatibilityPrefixes(): string[] {
    return cachedPrefixes;
  }
  
 -function windowsUserRoots(relativeRoot: string[]): string[] {
 -  return compatibilityPrefixes().flatMap((prefix) => {
++function currentUserName(): string | undefined {
++  try {
++    return os.userInfo().username.toLowerCase();
++  } catch {
++    return undefined;
++  }
++}
++
++/**
++ * Proton always runs as steamuser and plain Wine as the current user. A prefix
++ * can still contain another profile, for example after a tool ran through plain
++ * Wine in a Proton prefix, so choose the profile the game itself uses.
++ */
++function prefixUsers(users: string[]): string[] {
++  const find = (name: string | undefined) =>
++    users.find((user) => name !== undefined && user.toLowerCase() === name);
++  const selected = find("steamuser") ?? find(currentUserName());
++  return selected !== undefined ? [selected] : users;
++}
++
 +function windowsUserRoots(prefixes: string[], relativeRoot: string[]): string[] {
 +  return prefixes.flatMap((prefix) => {
      const users = path.join(prefix, "drive_c", "users");
      try {
-       return fs
+-      return fs
++      const profiles = fs
          .readdirSync(users, { withFileTypes: true })
 -        .filter((entry) => entry.isDirectory())
+-        .map((entry) => path.join(users, entry.name, ...relativeRoot))
 +        .filter(
 +          (entry) =>
 +            entry.isDirectory() &&
 +            !["public", "default", "default user", "all users"].includes(entry.name.toLowerCase()),
 +        )
-         .map((entry) => path.join(users, entry.name, ...relativeRoot))
++        .map((entry) => entry.name);
++      return prefixUsers(profiles)
++        .map((user) => path.join(users, user, ...relativeRoot))
          .filter(fs.existsSync);
      } catch {
-@@ -215,7 +231,11 @@ function windowsUserRoots(relativeRoot: string[]): string[] {
+       return [];
+@@ -215,7 +253,11 @@ function windowsUserRoots(relativeRoot: string[]): string[] {
    });
  }
  
@@ -119,7 +144,7 @@ index 08729b3..f32f945 100644
    const parts = relative.split(path.sep).filter(Boolean);
    let current = root;
    let existingParts = 0;
-@@ -240,7 +260,6 @@ function resolveCandidate(root: string, relative: string): ICandidate | undefine
+@@ -240,7 +282,6 @@ function resolveCandidate(root: string, relative: string): ICandidate | undefine
        existingParts += 1;
      }
  
@@ -127,7 +152,7 @@ index 08729b3..f32f945 100644
      if (existingParts < minimumExistingParts) {
        return undefined;
      }
-@@ -266,13 +285,33 @@ export function resolveWindowsUserPathSync(input: string): string {
+@@ -266,13 +307,33 @@ export function resolveWindowsUserPathSync(input: string): string {
      return input;
    }
  
@@ -163,10 +188,10 @@ index 08729b3..f32f945 100644
      .filter((candidate): candidate is ICandidate => candidate !== undefined);
  
 diff --git a/src/renderer/src/util/compatibilitySelection.test.ts b/src/renderer/src/util/compatibilitySelection.test.ts
-index fb672cd..1fc32fa 100644
+index fb672cd..ee058f2 100644
 --- a/src/renderer/src/util/compatibilitySelection.test.ts
 +++ b/src/renderer/src/util/compatibilitySelection.test.ts
-@@ -36,6 +36,53 @@ describe.runIf(process.platform === "linux")("selected compatibility prefix", ()
+@@ -36,6 +36,66 @@ describe.runIf(process.platform === "linux")("selected compatibility prefix", ()
      vi.stubEnv("VORTEX_COMPAT_PREFIXES", "");
      setCompatibilityGameProvider(undefined);
    });
@@ -203,6 +228,19 @@ index fb672cd..1fc32fa 100644
 +    expect(resolveCaseInsensitiveSync(settings)).toBe(settings);
 +    expect(resolveCaseInsensitiveSync(path.join(documents, "shared/file.txt"))).toBe(
 +      path.join(userDocuments, "Shared/file.txt"),
++    );
++  });
++
++  it("uses Proton's steamuser profile when a prefix also has a Wine user profile", () => {
++    const prefix = path.join(home, "prefix");
++    const expected = fixture(prefix);
++    fs.mkdirSync(path.join(prefix, "drive_c/users", os.userInfo().username, "Documents/My Games"), {
++      recursive: true,
++    });
++    setCompatibilityGameProvider(() => ({ path: home, environment: { WINEPREFIX: prefix } }));
++    expect(resolveCaseInsensitiveSync(path.join(documents, relative))).toBe(expected);
++    expect(resolveCaseInsensitiveSync(path.join(documents, "My Games/New/new.ini"))).toBe(
++      path.join(prefix, "drive_c/users/steamuser/Documents/My Games/New/new.ini"),
 +    );
 +  });
 +
