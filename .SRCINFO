@@ -8,6 +8,7 @@ pkgbase = vortex-linux
 	license = GPL-3.0-only
 	makedepends = dotnet-sdk
 	makedepends = git
+	makedepends = node-gyp
 	makedepends = nodejs-lts-krypton
 	makedepends = npm
 	makedepends = patchelf
