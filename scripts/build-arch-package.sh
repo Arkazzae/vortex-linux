@@ -3,7 +3,8 @@
 set -Eeuo pipefail
 
 readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly OUTPUT_DIRECTORY="${1:-${REPOSITORY_ROOT}/dist}"
+OUTPUT_DIRECTORY="${1:-${REPOSITORY_ROOT}/dist}"
+readonly BUILD_DIRECTORY="${REPOSITORY_ROOT}/dist/arch-build"
 
 if ((EUID == 0)); then
   printf 'makepkg must run as an unprivileged build user\n' >&2
@@ -31,6 +32,12 @@ if ! cmp --silent .SRCINFO "$generated_srcinfo"; then
   diff --unified .SRCINFO "$generated_srcinfo" || true
   exit 1
 fi
+
+install -dm755 "$OUTPUT_DIRECTORY"
+OUTPUT_DIRECTORY="$(cd -- "$OUTPUT_DIRECTORY" && pwd)"
+readonly OUTPUT_DIRECTORY
+"$REPOSITORY_ROOT/scripts/prepare-arch-build.sh" "$BUILD_DIRECTORY"
+cd "$BUILD_DIRECTORY"
 
 mapfile -t expected_packages < <(makepkg --packagelist)
 if ((${#expected_packages[@]} != 1)); then

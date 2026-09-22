@@ -25,5 +25,6 @@ printf 'Testing %s in a fresh %s container\n' \
 docker run --rm --platform linux/amd64 \
   --volume "$ABSOLUTE_APPIMAGE_PATH:/artifact/Vortex.AppImage:ro" \
   --volume "$REPOSITORY_ROOT/scripts/test-appimage-container.sh:/test-appimage-container.sh:ro" \
+  --volume "$REPOSITORY_ROOT/scripts/check-appimage-ui.py:/check-appimage-ui.py:ro" \
   "$CONTAINER_IMAGE" \
   bash /test-appimage-container.sh /artifact/Vortex.AppImage

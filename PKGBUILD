@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.6.3
-pkgrel=2
+pkgrel=3
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -15,6 +15,7 @@ depends=(
   'cups'
   'dotnet-runtime'
   'gtk3'
+  'fontconfig'
   'libappindicator'
   'libdrm'
   'libnotify'
@@ -43,6 +44,7 @@ makedepends=(
   'patchelf'
   'python'
   'python-setuptools'
+  'rust'
   'yarn'
 )
 
@@ -96,6 +98,8 @@ install=vortex.install
 
 _upstream_commit='aa459b9499224bde07e5119d715b463bfae92c5e'
 _pnpm='11.10.0'
+_libloot_commit='136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1'
+_libloot_sha512='4de893736611130d7b360e89ead5d27fb15b6ced9113a7d55604370c4db9db55cb8dca170d212b15be7f51bd40aca876dbea042e5f2a86e114b57cb905aaad99'
 _dotnet6='6.0.36'
 _dotnet8='8.0.29'
 _dotnet10='10.0.10'
@@ -117,11 +121,21 @@ _patches=(
   '0015-linux-dotnet-game-version.patch'
   '0016-linux-gamebryo-archive-support.patch'
   '0017-linux-preserve-vortex-userdata.patch'
+  '0018-linux-ini-support.patch'
+  '0019-linux-game-prefix-selection.patch'
+  '0020-linux-native-loot.patch'
+  '0021-linux-game-tool-runners.patch'
+  '0022-linux-heroic-stores.patch'
+  '0023-linux-native-build.patch'
+  '0024-linux-artifact-self-test.patch'
+  '0025-linux-new-game-config.patch'
+  '0026-linux-tool-file-arguments.patch'
 )
 
 source=(
   "vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=${_upstream_commit}"
   "pnpm-${_pnpm}.tgz::https://registry.npmjs.org/pnpm/-/pnpm-${_pnpm}.tgz"
+  "libloot-${_libloot_commit}.tar.gz::https://codeload.github.com/loot/libloot/tar.gz/${_libloot_commit}"
   "${_patches[@]}"
   'vortex.sh'
   'vortex.desktop'
@@ -148,8 +162,18 @@ sha512sums=(
   'SKIP'
   # pnpm is executed during the build, so keep its upstream archive verifiable.
   '0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8'
+  "$_libloot_sha512"
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
@@ -190,10 +214,23 @@ prepare() {
     patch -Np1 -i "$srcdir/$compatibility_patch"
   done
 
+  node - "$pkgver" <<'NODE'
+const fs = require('node:fs');
+for (const file of ['src/main/package.json', 'packages/vortex-api/package.json']) {
+  const metadata = JSON.parse(fs.readFileSync(file, 'utf8'));
+  metadata.version = process.argv[2];
+  fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n');
+}
+NODE
+
   export npm_config_runtime='electron'
   export npm_config_target='43.0.0'
   export npm_config_disturl='https://electronjs.org/headers'
   pnpm install --frozen-lockfile
+  pnpm --filter @vortex/main exec electron-rebuild \
+    --force --version "$npm_config_target" \
+    --module-dir "$srcdir/vortex/extensions/theme-switcher" \
+    --types prod,dev,optional --only font-scanner
 }
 
 build() {
@@ -209,10 +246,21 @@ build() {
   export npm_config_target='43.0.0'
   export npm_config_disturl='https://electronjs.org/headers'
 
+  (
+    cd "$srcdir/libloot-$_libloot_commit"
+    LIBLOOT_REVISION="${_libloot_commit:0:8}" \
+      RUSTFLAGS='-C target-cpu=x86-64' \
+      cargo build --release --locked -p libloot-nodejs
+  )
+  export LIBLOOT_NODE_PATH="$srcdir/libloot-$_libloot_commit/target/release/libloot.node"
+  install -m755 "$srcdir/libloot-$_libloot_commit/target/release/liblibloot_nodejs.so" \
+    "$LIBLOOT_NODE_PATH"
+  strip --strip-unneeded "$LIBLOOT_NODE_PATH"
+
   pnpm run build
 
   local gamebryo_plugin
-  for gamebryo_plugin in gamebryo-archive-support gamebryo-savegame-management; do
+  for gamebryo_plugin in gamebryo-archive-support gamebryo-savegame-management gamebryo-plugin-management; do
     if [[ ! -s "$srcdir/vortex/extensions/$gamebryo_plugin/dist/index.cjs" ]]; then
       printf 'Gamebryo extension was not built for Linux: %s\n' "$gamebryo_plugin" >&2
       return 1
@@ -318,6 +366,8 @@ package() {
     "$pkgdir/usr/share/applications/com.nexusmods.vortex.desktop"
   install -Dm644 assets/images/vortex.png \
     "$pkgdir/usr/share/icons/hicolor/256x256/apps/vortex.png"
+  install -Dm644 "$srcdir/libloot-$_libloot_commit/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LIBLOOT-LICENSE.txt"
   install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/VORTEX-LICENSE.md"
   install -Dm644 "$srcdir/LICENSE" \
     "$pkgdir/usr/share/licenses/$pkgname/PATCHES-GPL-3.0.txt"

@@ -222,7 +222,7 @@ write_output pnpm_version "$pnpm_version"
 write_output worktree "$worktree"
 
 for patch_name in "${patches[@]}"; do
-  patch_path="${REPOSITORY_ROOT}/${patch_name}"
+  patch_path="${REPOSITORY_ROOT}/patches/${patch_name}"
   if [[ ! -f "$patch_path" ]]; then
     printf 'Patch listed in PKGBUILD is missing: %s\n' "$patch_name" >&2
     exit 1
@@ -232,7 +232,7 @@ for patch_name in "${patches[@]}"; do
   if ! git -C "$worktree" apply --check "$patch_path"; then
     printf 'FAILED\n' >&2
     if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
-      printf '::error file=%s::Patch does not apply to Vortex %s\n' "$patch_name" "$resolved_ref"
+      printf '::error file=patches/%s::Patch does not apply to Vortex %s\n' "$patch_name" "$resolved_ref"
     fi
     exit 1
   fi

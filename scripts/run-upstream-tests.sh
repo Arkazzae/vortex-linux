@@ -20,7 +20,7 @@ fi
 mapfile -t test_files < <(
   sed -nE \
     's#^diff --git a/([^ ]*\.test\.(ts|tsx)) b/.*#\1#p' \
-    "${REPOSITORY_ROOT}"/[0-9][0-9][0-9][0-9]-*.patch | sort -u
+    "${REPOSITORY_ROOT}"/patches/[0-9][0-9][0-9][0-9]-*.patch | sort -u
 )
 
 if ((${#test_files[@]} == 0)); then
@@ -84,3 +84,21 @@ done
 # not run on the Linux CI host.
 pnpm_config_verify_deps_before_run='' \
   "$NX_BIN" run @vortex/renderer:typecheck
+
+libloot_work_directory=''
+cleanup_libloot() {
+  if [[ -n "$libloot_work_directory" ]]; then
+    rm -rf -- "$libloot_work_directory"
+  fi
+}
+trap cleanup_libloot EXIT
+if [[ -z "${LIBLOOT_NODE_PATH:-}" ]]; then
+  libloot_work_directory="$(mktemp -d -t vortex-libloot-check.XXXXXXXX)"
+  "$REPOSITORY_ROOT/scripts/build-test-libloot.sh" "$libloot_work_directory"
+  export LIBLOOT_NODE_PATH="$libloot_work_directory/libloot.node"
+fi
+pnpm_config_verify_deps_before_run='' pnpm --filter gamebryo-plugin-management run build
+pnpm_config_verify_deps_before_run='' pnpm --filter gamebryo-plugin-management run test
+pnpm_config_verify_deps_before_run='' "$NX_BIN" run gamebryo-plugin-management:typecheck
+node "$REPOSITORY_ROOT/scripts/test-loot.cjs" \
+  "$UPSTREAM_WORKTREE/extensions/gamebryo-plugin-management/dist"

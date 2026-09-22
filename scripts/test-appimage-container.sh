@@ -34,8 +34,10 @@ if ! apt-get install --quiet=2 --no-install-recommends --yes \
   libxkbcommon0 \
   libxrandr2 \
   libxss1 \
+  python3-websocket \
   wine \
   wine64 \
+  xauth \
   xvfb >"$DEPENDENCY_LOG" 2>&1; then
   printf 'Unable to install clean-container runtime dependencies\n' >&2
   sed -n '1,240p' "$DEPENDENCY_LOG" >&2
@@ -56,35 +58,43 @@ done
 
 printf 'Running AppImage runtime self-test without host .NET\n'
 PREBUILDS_ONLY=1 APPIMAGE_EXTRACT_AND_RUN=1 \
-  timeout 30s "$TEST_APPIMAGE" --vortex-self-test
+  timeout 120s xvfb-run --auto-servernum "$TEST_APPIMAGE" --vortex-self-test
 
 useradd --create-home --shell /bin/bash vortex-test
 install -o vortex-test -g vortex-test -m755 "$TEST_APPIMAGE" /home/vortex-test/Vortex.AppImage
 
 printf 'Starting the full AppImage under Xvfb\n'
-set +e
 runuser --user vortex-test -- env \
   HOME=/home/vortex-test \
   XDG_CONFIG_HOME=/home/vortex-test/.config \
   XDG_DATA_HOME=/home/vortex-test/.local/share \
   APPIMAGE_EXTRACT_AND_RUN=1 \
-  timeout --signal=TERM --kill-after=5s 25s \
   dbus-run-session -- \
   xvfb-run --auto-servernum /home/vortex-test/Vortex.AppImage --no-sandbox \
-  >"$STARTUP_LOG" 2>&1
-startup_status=$?
-set -e
+    --remote-debugging-port=9222 >"$STARTUP_LOG" 2>&1 &
+app_pid=$!
+cleanup() {
+  kill "$app_pid" 2>/dev/null || true
+  pkill -u vortex-test 2>/dev/null || true
+  wait "$app_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
 
-if [[ "$startup_status" -ne 124 ]]; then
-  printf 'AppImage exited during the startup window (status %d)\n' "$startup_status" >&2
+if ! python3 /check-appimage-ui.py; then
   sed -n '1,240p' "$STARTUP_LOG" >&2
+  find /home/vortex-test/.config -name vortex.log -exec tail -n 100 {} \; >&2
   exit 1
 fi
 
-if grep -Fq 'You must install .NET to run this application' "$STARTUP_LOG"; then
-  printf 'AppImage tried to use a host .NET installation\n' >&2
+sleep 5
+if ! kill -0 "$app_pid" 2>/dev/null; then
+  printf 'AppImage exited after loading its main page\n' >&2
   sed -n '1,240p' "$STARTUP_LOG" >&2
   exit 1
 fi
-
-printf 'AppImage remained running for the 25-second smoke window\n'
+if grep -Eq 'You must install \.NET|render process gone|Segmentation fault|MODULE_NOT_FOUND' "$STARTUP_LOG"; then
+  printf 'AppImage reported a runtime failure\n' >&2
+  sed -n '1,240p' "$STARTUP_LOG" >&2
+  exit 1
+fi
+printf 'AppImage fixtures and desktop startup passed without system .NET\n'

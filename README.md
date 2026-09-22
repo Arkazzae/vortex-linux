@@ -8,10 +8,13 @@ This repo does the other thing: it patches Vortex to actually understand Linux, 
 
 ## What it does
 
-- Finds your Steam libraries and Proton prefixes
+- Finds native and Flatpak Steam libraries and selects the active game’s Proton prefix
 - Maps `Documents` / `AppData` into the right prefix, so mods and saves land where the game actually looks
-- Launches games through Steam
-- Runs Windows modding tools through Wine
+- Discovers Epic, GOG and Amazon games in native and Flatpak Heroic installations
+- Launches games through Steam or Heroic
+- Runs Windows modding tools in the game’s Wine/Proton prefix, including calls made by extensions
+- Reads and writes Windows INI files while preserving encoding, comments and hardlinks
+- Builds Bethesda plugin management with native Linux LOOT
 - Deploys and purges hardlinked mods without leaving stale files behind
 - Resolves Windows path casing consistently and keeps staging files safe when external changes are detected
 
@@ -59,33 +62,63 @@ AppImages don't add themselves to your app menu or register as the `nxm://` hand
 
 ## Before you add your first game
 
-**Launch the game once through Steam.** Proton and the game create their real config and save directories on that first run; if you point Vortex at a prefix that doesn't exist yet, nothing will line up.
+**Launch the game once through Steam or Heroic.** Proton and the game create their real config and save directories on that first run; if you point Vortex at a prefix that doesn't exist yet, nothing will line up.
 
 **Keep staging and the game on the same filesystem.** Hardlinks can't cross filesystems. Vortex suggests a good folder under `Settings → Mods`. If you already have mods in an old staging folder, use Vortex's transfer flow — don't move or delete it by hand.
 
-If you keep extra compatibility prefixes around, list them colon-separated in `VORTEX_COMPAT_PREFIXES`. The Wine prefix used for helper tools defaults to:
+The selected game determines which prefix Vortex uses. Steam’s per-game Proton
+selection takes precedence over its default selection. Heroic’s game settings
+select Wine, Proton or UMU; Flatpak tools run inside the Heroic Flatpak.
 
-```text
-${XDG_DATA_HOME:-$HOME/.local/share}/vortex-linux/wineprefix
-```
+For a manually added Wine game, set `WINEPREFIX` in its environment settings.
+`VORTEX_COMPAT_PREFIXES` can list additional prefixes, separated by colons, for
+lookups without a selected game. If several prefixes match, Vortex reports the
+ambiguity instead of choosing by modification time.
+
+If Heroic is an AppImage outside `PATH`, set `HEROIC_BINARY` to its executable.
+Launch it once before scanning for games. Linux-native Heroic games keep their
+native configuration paths.
+
+The separate prefix for Vortex’s own helper processes still defaults to
+`${XDG_DATA_HOME:-$HOME/.local/share}/vortex-linux/wineprefix`.
 
 ## Building from source (Arch)
 
 ```sh
 git clone https://github.com/Arkazzae/vortex-linux.git
 cd vortex-linux
+scripts/prepare-arch-build.sh
+cd dist/arch-build
 makepkg -si
 ```
 
-The build is pinned to an exact upstream Vortex commit and downloads the source, Node dependencies, Electron and the Microsoft runtime files. First build is a big one.
+The build pins both Vortex and libloot to exact upstream commits and downloads the source, Node dependencies, Electron and the Microsoft runtime files. First build is a big one.
+
+Patches live in `patches/`, in the order listed by `_patches` in `PKGBUILD`.
+`prepare-arch-build.sh` copies the packaging files and patches into
+`dist/arch-build`, where makepkg keeps its sources and build output. Run it again
+after changing patches or package metadata. `scripts/build-arch-package.sh`
+prepares this directory automatically.
 
 ## How it's tested
 
-CI applies every patch, runs the affected tests and typechecks the renderer. Changes on `master` build both release formats; an unpublished package revision publishes them together.
+CI applies every patch, runs the affected tests, builds and tests native LOOT, and typechecks the renderer and plugin management. Changes on `master` build both release formats; an unpublished package revision publishes them together.
 
 Every six hours, an unattended update job checks the newest stable upstream Vortex release. When it finds one, it applies the patches, runs their tests and renderer typechecking, builds both release formats, and boots the AppImage in a clean Ubuntu container. Only after every validation stage succeeds does the bot update `PKGBUILD` / `.SRCINFO` on `master` and publish the release. A validation or build failure leaves `master` and the current release untouched. Any failure opens or updates one issue with the broken stage; an interrupted publication is retried by the next scheduled run.
 
-Before release, the AppImage is booted in a clean Ubuntu container with Wine and the desktop libraries but no system .NET. You can run the same check locally:
+Before release, the AppImage is checked in a clean Ubuntu 24.04 container with
+Wine and desktop libraries, without system .NET. The check runs the bundled
+runtime probe, checks the bundled Windows .NET 6/8/10 inventory through Wine,
+exercises an XML FOMOD installer, sorts fixture plugins with native
+LOOT, and checks INI writes, prefix selection, Heroic discovery, tool arguments and
+hardlink purge. It then starts Vortex under Xvfb and waits for its main page to
+render.
+
+These fixtures do not test a real game launch, Steam authentication, Flatpak
+permissions, every FOMOD dialog or a complete collection install. The game list
+above records earlier reports; it is not a test matrix for each new build.
+
+Run the same artifact check locally:
 
 ```sh
 scripts/test-appimage.sh dist/Vortex-*.AppImage
@@ -97,7 +130,16 @@ And test a new upstream release:
 scripts/check-upstream-compatibility.sh --ref latest --keep
 ```
 
-`--ref pinned` tests whatever version `PKGBUILD` currently points at.
+`--ref pinned` checks patch application against the pinned version. To run the
+regression suite, keep the prepared source, install its dependencies and use:
+
+```sh
+scripts/run-upstream-tests.sh /path/to/patched-vortex
+```
+
+The suite also needs Rust to build the pinned libloot binding. See
+[the comparison notes](docs/linux-project-comparison.md) for the projects reviewed
+and the remaining gaps.
 
 ## Something broken?
 
