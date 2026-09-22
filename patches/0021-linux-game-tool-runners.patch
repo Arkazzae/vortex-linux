@@ -162,10 +162,10 @@ index 058df74..08729b3 100644
    const key = JSON.stringify([
 diff --git a/src/renderer/src/util/linux/gameTools.test.ts b/src/renderer/src/util/linux/gameTools.test.ts
 new file mode 100644
-index 0000000..3cb993a
+index 0000000..3e4ead4
 --- /dev/null
 +++ b/src/renderer/src/util/linux/gameTools.test.ts
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,171 @@
 +import { execFile } from "node:child_process";
 +import * as fs from "node:fs";
 +import * as os from "node:os";
@@ -284,6 +284,21 @@ index 0000000..3cb993a
 +    await expect(
 +      resolveGameTool("Tool.exe", [], {}, { path: gamePath, store: "steam" }),
 +    ).rejects.toThrow(/selected in Steam/);
++  });
++  it("falls back to Steam's default after a per-game selection is cleared", async () => {
++    config({ 0: { name: "proton_10" }, 42: { name: "" } });
++    expect(await getConfiguredProtonName(steam, "42")).toBe("proton_10");
++  });
++  it("finds compatibility tools in Steam's extra tool directories", async () => {
++    const extra = path.join(root, "extra tools");
++    const runner = path.join(extra, "GE-Proton");
++    write(path.join(runner, "proton"), "");
++    write(
++      path.join(runner, "compatibilitytool.vdf"),
++      vdf({ compatibilitytools: { compat_tools: { "GE-Proton": { install_path: "." } } } }),
++    );
++    vi.stubEnv("STEAM_EXTRA_COMPAT_TOOLS_PATHS", extra);
++    expect(await resolveProtonPath(steam, "GE-Proton")).toBe(runner);
 +  });
 +  it("compares Proton versions numerically and never matches 9 with 19", async () => {
 +    proton("Proton 9.0");
@@ -417,7 +432,7 @@ index 0000000..9fa7e21
 +  };
 +}
 diff --git a/src/renderer/src/util/linux/proton.ts b/src/renderer/src/util/linux/proton.ts
-index 8b567d5..0b35c48 100644
+index 8b567d5..219b0db 100644
 --- a/src/renderer/src/util/linux/proton.ts
 +++ b/src/renderer/src/util/linux/proton.ts
 @@ -1,9 +1,9 @@
@@ -433,7 +448,7 @@ index 8b567d5..0b35c48 100644
  
  export interface IProtonInfo {
    usesProton: boolean;
-@@ -11,226 +11,108 @@ export interface IProtonInfo {
+@@ -11,226 +11,117 @@ export interface IProtonInfo {
    protonPath?: string;
  }
  
@@ -499,7 +514,12 @@ index 8b567d5..0b35c48 100644
 +    for (const key of ["InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping"]) {
 +      config = value(config, key);
 +    }
-+    return config?.[appId]?.name ?? config?.["0"]?.name;
++    // Steam keeps an empty name after the per-game override is cleared.
++    const name = (id: string): string | undefined => {
++      const candidate = config?.[id]?.name;
++      return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
++    };
++    return name(appId) ?? name("0");
    } catch {
 -    return false;
 -  }
@@ -542,6 +562,10 @@ index 8b567d5..0b35c48 100644
 +function installations(steamPath: string): string[] {
 +  const directories = [
 +    path.join(steamPath, "compatibilitytools.d"),
++    ...(process.env.STEAM_EXTRA_COMPAT_TOOLS_PATHS ?? "").split(path.delimiter).filter(Boolean),
++    // Distribution packages such as proton-ge-custom install here.
++    "/usr/share/steam/compatibilitytools.d",
++    "/usr/local/share/steam/compatibilitytools.d",
 +    ...steamLibraries([steamPath]).map((library) => path.join(library, "steamapps", "common")),
 +  ];
 +  return directories.flatMap((directory) => {
@@ -719,7 +743,7 @@ index 8b567d5..0b35c48 100644
  export function buildProtonEnvironment(
    compatDataPath: string,
    steamPath: string,
-@@ -243,17 +125,10 @@ export function buildProtonEnvironment(
+@@ -243,17 +134,10 @@ export function buildProtonEnvironment(
      WINEPREFIX: getWinePrefixPath(compatDataPath),
    };
  }
