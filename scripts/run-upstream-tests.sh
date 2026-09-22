@@ -61,6 +61,14 @@ printf 'Running %d patch-related test files\n' "${#test_files[@]}"
 printf '  %s\n' "${test_files[@]}"
 
 cd "$UPSTREAM_WORKTREE"
+# pnpm 11 defaults to re-running install when node_modules was created with
+# --ignore-scripts. Keep the compatibility job hermetic: Nx can build its own
+# TypeScript dependencies, while Vortex's platform-specific install hooks must
+# not run on the Linux CI host. Typechecking first also builds the workspace
+# packages that the tests import, such as @vortex/nexus-api-v3.
+pnpm_config_verify_deps_before_run='' \
+  "$NX_BIN" run @vortex/renderer:typecheck
+
 mapfile -t test_configs < <(printf '%s\n' "${!tests_by_config[@]}" | sort)
 for test_config in "${test_configs[@]}"; do
   mapfile -t project_tests < <(printf '%s' "${tests_by_config[$test_config]}")
@@ -77,13 +85,6 @@ for test_config in "${test_configs[@]}"; do
     "$VITEST_BIN" --config "$config_name" run "${relative_tests[@]}"
   )
 done
-
-# pnpm 11 defaults to re-running install when node_modules was created with
-# --ignore-scripts. Keep the compatibility job hermetic: Nx can build its own
-# TypeScript dependencies, while Vortex's platform-specific install hooks must
-# not run on the Linux CI host.
-pnpm_config_verify_deps_before_run='' \
-  "$NX_BIN" run @vortex/renderer:typecheck
 
 libloot_work_directory=''
 cleanup_libloot() {
