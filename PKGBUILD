@@ -39,6 +39,7 @@ depends=(
 makedepends=(
   'dotnet-sdk'
   'git'
+  'node-gyp'
   'nodejs-lts-krypton'
   'npm'
   'patchelf'
@@ -226,6 +227,10 @@ NODE
   export npm_config_runtime='electron'
   export npm_config_target='43.0.0'
   export npm_config_disturl='https://electronjs.org/headers'
+  # pnpm builds native addons in parallel, and each node-gyp process would
+  # otherwise download and extract the Electron headers into the same cache
+  # directory at once, letting some read a partially written common.gypi.
+  node-gyp install
   pnpm install --frozen-lockfile
   pnpm --filter @vortex/main exec electron-rebuild \
     --force --version "$npm_config_target" \
