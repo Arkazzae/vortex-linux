@@ -1,6 +1,6 @@
 pkgbase = vortex-linux
 	pkgdesc = Community build of Vortex with generic Linux compatibility patches
-	pkgver = 2.7.0
+	pkgver = 2.7.1
 	pkgrel = 1
 	url = https://github.com/Arkazzae/vortex-linux
 	install = vortex.install
@@ -44,7 +44,7 @@ pkgbase = vortex-linux
 	depends = xdg-utils
 	optdepends = kde-cli-tools: native trash support on KDE Plasma
 	optdepends = pipewire: screen sharing under Wayland
-	provides = vortex=2.7.0
+	provides = vortex=2.7.1
 	conflicts = vortex
 	conflicts = vortex-bin
 	conflicts = vortex-git
@@ -57,7 +57,7 @@ pkgbase = vortex-linux
 	noextract = windowsdesktop-runtime-10.0.10-win-x64.zip
 	options = !debug
 	options = !strip
-	source = vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=ee7736c70267496526fde227876ac524cc30ef6b
+	source = vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=c8ea03d00776a4a288e5e813831238b42ae24127
 	source = pnpm-11.10.0.tgz::https://registry.npmjs.org/pnpm/-/pnpm-11.10.0.tgz
 	source = libloot-136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1.tar.gz::https://codeload.github.com/loot/libloot/tar.gz/136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1
 	source = 0001-linux-runtime-compatibility.patch
@@ -73,7 +73,6 @@ pkgbase = vortex-linux
 	source = 0011-linux-case-safe-deployment.patch
 	source = 0012-linux-extension-path-compatibility.patch
 	source = 0013-linux-win32-normalize-compatibility.patch
-	source = 0014-linux-epic-extension-api.patch
 	source = 0015-linux-dotnet-game-version.patch
 	source = 0016-linux-gamebryo-archive-support.patch
 	source = 0017-linux-preserve-vortex-userdata.patch
@@ -99,7 +98,6 @@ pkgbase = vortex-linux
 	sha512sums = SKIP
 	sha512sums = 0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8
 	sha512sums = 4de893736611130d7b360e89ead5d27fb15b6ced9113a7d55604370c4db9db55cb8dca170d212b15be7f51bd40aca876dbea042e5f2a86e114b57cb905aaad99
-	sha512sums = SKIP
 	sha512sums = SKIP
 	sha512sums = SKIP
 	sha512sums = SKIP

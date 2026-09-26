@@ -20,6 +20,12 @@ This repo does the other thing: it patches Vortex to actually understand Linux, 
 
 These are general Linux fixes, not per-game hacks. Game-specific Vortex extensions can still carry their own Windows-only assumptions, so not every supported game is guaranteed to work — but the base is sane now.
 
+## Upstream is catching up 🎉
+
+Vortex itself is slowly becoming more Linux-friendly. Since 2.7.1, the extension API's `util.epicGamesLauncher` is a shim over `GameStoreHelper` instead of `undefined` everywhere except Windows, so our Epic API fallback patch is gone 🎊.
+
+ Every fix that lands upstream is one less patch to carry here, and the goal is for this repo to shrink.
+
 ## Games tested (confirmed working)
 
 - Starfield

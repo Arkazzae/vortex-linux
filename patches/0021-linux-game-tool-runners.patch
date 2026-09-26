@@ -1,5 +1,5 @@
 diff --git a/src/renderer/src/ExtensionManager.ts b/src/renderer/src/ExtensionManager.ts
-index 2c4ce4a..7cfc8a9 100644
+index 6f1c70b..ee7a2f8 100644
 --- a/src/renderer/src/ExtensionManager.ts
 +++ b/src/renderer/src/ExtensionManager.ts
 @@ -88,7 +88,11 @@ import type {
@@ -23,7 +23,7 @@ index 2c4ce4a..7cfc8a9 100644
  import { showError } from "./util/message";
  import { deregisterProtocolHandler, registerProtocolHandler } from "./util/protocolRegistration";
  import runElevatedCustomTool from "./util/runElevatedCustomTool";
-@@ -2345,6 +2350,7 @@ class ExtensionManager {
+@@ -2344,6 +2349,7 @@ class ExtensionManager {
      if (!truthy(executable)) {
        return PromiseBB.reject(new ProcessCanceled("Executable not set"));
      }
@@ -31,7 +31,7 @@ index 2c4ce4a..7cfc8a9 100644
      const interpreter = this.mInterpreters[path.extname(executable).toLowerCase()];
      if (interpreter !== undefined) {
        try {
-@@ -2358,7 +2364,7 @@ class ExtensionManager {
+@@ -2357,7 +2363,7 @@ class ExtensionManager {
        }
      }
  
@@ -40,7 +40,7 @@ index 2c4ce4a..7cfc8a9 100644
  
      // Detect if executable is a script file that requires shell: true
      // Common script extensions that need shell interpretation
-@@ -2375,7 +2381,7 @@ class ExtensionManager {
+@@ -2374,7 +2380,7 @@ class ExtensionManager {
      // I think the key is called "Path" on windows but I'm not willing to bet this is consistent
      // across all language variants and versions
      const pathEnvName = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
@@ -49,7 +49,7 @@ index 2c4ce4a..7cfc8a9 100644
        ...filteredEnvironment(),
        [pathEnvName]: process.env["PATH_ORIG"] || process.env["PATH"],
        ...options.env,
-@@ -2391,7 +2397,15 @@ class ExtensionManager {
+@@ -2390,7 +2396,15 @@ class ExtensionManager {
        this.applyStartHooks({ executable, args, options })
          .then((updatedParameters) => {
            ({ executable, args, options } = updatedParameters);
@@ -66,7 +66,7 @@ index 2c4ce4a..7cfc8a9 100644
          })
          .then(
            () =>
-@@ -2418,7 +2432,9 @@ class ExtensionManager {
+@@ -2417,7 +2431,9 @@ class ExtensionManager {
  
                  const child = spawn(
                    runExe,
@@ -78,12 +78,12 @@ index 2c4ce4a..7cfc8a9 100644
                  );
                  if (truthy(child["exitCode"])) {
 diff --git a/src/renderer/src/util/StarterInfo.ts b/src/renderer/src/util/StarterInfo.ts
-index ed0d9c6..99a2e5d 100644
+index 9a25e6f..4793e19 100644
 --- a/src/renderer/src/util/StarterInfo.ts
 +++ b/src/renderer/src/util/StarterInfo.ts
-@@ -26,7 +26,6 @@ import {
+@@ -25,7 +25,6 @@ import {
+ } from "./CustomErrors";
  import { emitGameLaunched, recordLaunchExit } from "./gameLaunchAnalytics";
- import GameStoreHelper from "./GameStoreHelper";
  import getVortexPath from "./getVortexPath";
 -import { isWindowsExecutable } from "./linux/proton";
  import { resolvePlatformPath } from "./nativeExecutable";
@@ -125,7 +125,7 @@ index ed0d9c6..99a2e5d 100644
 -        }
 -      };
 -
--      const steamStore = GameStoreHelper.getGameStore("steam") as Steam;
+-      const steamStore = storeLookup.getGameStore(getGameStoresSafe(), "steam") as Steam;
 -      return steamStore.runToolWithProton(
 -        api,
 -        info.exePath,

@@ -1,7 +1,7 @@
 # Maintainer: Arkazzae <https://github.com/Arkazzae>
 
 pkgname=vortex-linux
-pkgver=2.7.0
+pkgver=2.7.1
 pkgrel=1
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
@@ -97,7 +97,7 @@ conflicts=('vortex' 'vortex-bin' 'vortex-git')
 options=('!debug' '!strip')
 install=vortex.install
 
-_upstream_commit='ee7736c70267496526fde227876ac524cc30ef6b'
+_upstream_commit='c8ea03d00776a4a288e5e813831238b42ae24127'
 _pnpm='11.10.0'
 _libloot_commit='136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1'
 _libloot_sha512='4de893736611130d7b360e89ead5d27fb15b6ced9113a7d55604370c4db9db55cb8dca170d212b15be7f51bd40aca876dbea042e5f2a86e114b57cb905aaad99'
@@ -118,7 +118,6 @@ _patches=(
   '0011-linux-case-safe-deployment.patch'
   '0012-linux-extension-path-compatibility.patch'
   '0013-linux-win32-normalize-compatibility.patch'
-  '0014-linux-epic-extension-api.patch'
   '0015-linux-dotnet-game-version.patch'
   '0016-linux-gamebryo-archive-support.patch'
   '0017-linux-preserve-vortex-userdata.patch'
@@ -166,7 +165,6 @@ sha512sums=(
   "$_libloot_sha512"
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
-  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
