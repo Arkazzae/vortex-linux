@@ -1,6 +1,5 @@
 #!/bin/sh
 
-export IGNORE_UPDATES="${IGNORE_UPDATES:-yes}"
 export ELECTRON_TRASH="${ELECTRON_TRASH:-gio}"
 # FOMOD needs build/Release.
 unset PREBUILDS_ONLY
