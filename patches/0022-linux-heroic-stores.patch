@@ -1,29 +1,35 @@
 diff --git a/src/renderer/src/extensions/gamemode_management/GameModeManager.ts b/src/renderer/src/extensions/gamemode_management/GameModeManager.ts
-index fee040e..2139e65 100644
+index d8c96db..4e9f531 100644
 --- a/src/renderer/src/extensions/gamemode_management/GameModeManager.ts
 +++ b/src/renderer/src/extensions/gamemode_management/GameModeManager.ts
-@@ -26,6 +26,7 @@ import { getNormalizeFunc } from "../../util/api";
- import { ProcessCanceled, SetupError, UserCanceled } from "../../util/CustomErrors";
+@@ -18,6 +18,7 @@ import { ProcessCanceled, SetupError, UserCanceled } from "../../util/CustomErro
  import EpicGamesLauncher from "../../util/EpicGamesLauncher";
  import * as fs from "../../util/fs";
+ import GameStoreHelper, { normalizeStoreQuery } from "../../util/GameStoreHelper";
 +import { HeroicStore } from "../../util/Heroic";
+ import { log } from "../../util/log";
  import { activeProfile, discoveryByGame } from "../../util/selectors";
  import Steam from "../../util/Steam";
- import { normalizeStoreQuery } from "../../util/storeQuery";
-@@ -82,6 +83,7 @@ class GameModeManager {
-       OriginLauncher.create(),
-       UPlayLauncher.create(),
-       XboxLauncher.create(api),
+@@ -69,7 +70,12 @@ class GameModeManager {
+     this.mStore = null;
+     this.mKnownGames = extensionGames;
+     this.mGameStubs = gameStubs;
+-    this.mKnownGameStores = [Steam, EpicGamesLauncher, ...gameStoreExtensions].filter(Boolean);
++    this.mKnownGameStores = [
++      Steam,
++      EpicGamesLauncher,
++      ...gameStoreExtensions,
 +      ...(process.platform === "linux" ? [new HeroicStore("gog"), new HeroicStore("amazon")] : []),
-     ].filter(Boolean);
++    ].filter(Boolean);
      this.mActiveSearch = null;
-     this.mQuickDiscoveryAbort = null;
+     this.mOnGameModeActivated = onGameModeActivated;
+   }
 diff --git a/src/renderer/src/util/EpicGamesLauncher.linux.test.ts b/src/renderer/src/util/EpicGamesLauncher.linux.test.ts
 new file mode 100644
-index 0000000..3bfb574
+index 000000000..9ce6155e7
 --- /dev/null
 +++ b/src/renderer/src/util/EpicGamesLauncher.linux.test.ts
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,47 @@
 +import * as fs from "node:fs";
 +import * as os from "node:os";
 +import * as path from "node:path";
@@ -56,7 +62,6 @@ index 0000000..3bfb574
 +  });
 +
 +  it("reports that Epic and its games are unavailable", async () => {
-+    expect(store.snapshot()).toEqual({ entries: [], isInstalled: false });
 +    await expect(store.allGames()).resolves.toEqual([]);
 +    await expect(store.getGameStorePath()).resolves.toBeUndefined();
 +    await expect(store.isGameInstalled?.("Example")).resolves.toBe(false);
@@ -73,19 +78,19 @@ index 0000000..3bfb574
 +  });
 +});
 diff --git a/src/renderer/src/util/EpicGamesLauncher.ts b/src/renderer/src/util/EpicGamesLauncher.ts
-index 8c577f7..90d780d 100644
+index 5f2f4d0..0e925fa 100644
 --- a/src/renderer/src/util/EpicGamesLauncher.ts
 +++ b/src/renderer/src/util/EpicGamesLauncher.ts
-@@ -10,6 +10,7 @@ import type { IGameStore, IGameStoreSnapshot } from "../types/IGameStore";
- import { GameEntryNotFound } from "../types/IGameStore";
- import type { IGameStoreEntry } from "../types/IGameStoreEntry";
+@@ -6,6 +6,7 @@ import type * as winapiT from "winapi-bindings";
+ import type { IExtensionApi, IGameStore, IGameStoreEntry } from "../types/api";
+ import { GameEntryNotFound } from "../types/api";
  import * as fs from "./fs";
 +import { HeroicStore } from "./Heroic";
  import lazyRequire from "./lazyRequire";
+ import { log } from "./log";
  import opn from "./opn";
- 
-@@ -243,6 +244,10 @@ const manifestSchema = z.looseObject({
- });
+@@ -225,6 +226,10 @@ class EpicGamesLauncher implements IGameStore {
+ }
  
  const instance: IGameStore | undefined =
 -  process.platform === "win32" ? new EpicGamesLauncher() : undefined;
@@ -311,19 +316,14 @@ index 0000000..aab87cd
 +});
 diff --git a/src/renderer/src/util/Heroic.ts b/src/renderer/src/util/Heroic.ts
 new file mode 100644
-index 0000000..985c6df
+index 000000000..ddc6e6d2b
 --- /dev/null
 +++ b/src/renderer/src/util/Heroic.ts
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,99 @@
 +import Bluebird from "bluebird";
 +
 +import type { IExtensionApi } from "../types/IExtensionContext";
-+import {
-+  GameEntryNotFound,
-+  GameStoreNotFound,
-+  type IGameStore,
-+  type IGameStoreSnapshot,
-+} from "../types/IGameStore";
++import { GameEntryNotFound, GameStoreNotFound, type IGameStore } from "../types/IGameStore";
 +import { registerCompatibilityStore, resetCompatibilityPathCache } from "./compatibilityPaths";
 +import { registerGameToolRunner } from "./linux/gameTools";
 +import {
@@ -342,7 +342,6 @@ index 0000000..985c6df
 +  public readonly name: string;
 +  public readonly priority: number;
 +  private games: HeroicGame[] | undefined;
-+  private installed = false;
 +  public constructor(public readonly id: HeroicStoreId) {
 +    this.name = `${{ epic: "Epic Games", gog: "GOG", amazon: "Amazon Games" }[id]} (Heroic)`;
 +    this.priority = id === "gog" ? 15 : 55;
@@ -357,17 +356,10 @@ index 0000000..985c6df
 +      () => (this.games ??= readHeroicGames().filter((entry) => entry.gameStoreId === this.id)),
 +    );
 +  }
-+  public snapshot(): IGameStoreSnapshot {
-+    return { entries: this.games ?? [], isInstalled: this.installed };
-+  }
 +  public reloadGames(): Bluebird<void> {
 +    this.games = undefined;
 +    resetCompatibilityPathCache();
-+    return this.allGames()
-+      .then(() => this.isGameStoreInstalled())
-+      .then((installed) => {
-+        this.installed = installed;
-+      });
++    return this.allGames().then(() => undefined);
 +  }
 +  private find(predicate: (game: HeroicGame) => boolean, query: string): Bluebird<HeroicGame> {
 +    return this.allGames().then((games) => {
@@ -428,12 +420,12 @@ index 0000000..985c6df
 +  }
 +}
 diff --git a/src/renderer/src/util/StarterInfo.ts b/src/renderer/src/util/StarterInfo.ts
-index 4793e19..2ccb9a7 100644
+index c886e48..c535b73 100644
 --- a/src/renderer/src/util/StarterInfo.ts
 +++ b/src/renderer/src/util/StarterInfo.ts
-@@ -25,6 +25,7 @@ import {
- } from "./CustomErrors";
+@@ -26,6 +26,7 @@ import {
  import { emitGameLaunched, recordLaunchExit } from "./gameLaunchAnalytics";
+ import GameStoreHelper from "./GameStoreHelper";
  import getVortexPath from "./getVortexPath";
 +import { findHeroicGame, heroicLaunchCommand } from "./linux/heroic";
  import { resolvePlatformPath } from "./nativeExecutable";
@@ -472,7 +464,7 @@ index 4793e19..2ccb9a7 100644
 +
      const steamGameEntry = info.isGame ? await findSteamEntry(info) : undefined;
      if (steamGameEntry !== undefined) {
-       const steamStore = storeLookup.getGameStore(getGameStoresSafe(), "steam") as Steam;
+       const steamStore = GameStoreHelper.getGameStore("steam") as Steam;
 diff --git a/src/renderer/src/util/linux/heroic.ts b/src/renderer/src/util/linux/heroic.ts
 new file mode 100644
 index 0000000..651a0d4

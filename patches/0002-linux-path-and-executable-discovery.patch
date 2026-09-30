@@ -44,10 +44,10 @@ index cec670855..cb110fad1 100644
            return t("<Invalid Drive>");
          }
 diff --git a/src/renderer/src/extensions/gamemode_management/index.ts b/src/renderer/src/extensions/gamemode_management/index.ts
-index 9b3277134..8da456558 100644
+index 717be78..e3ffcca 100644
 --- a/src/renderer/src/extensions/gamemode_management/index.ts
 +++ b/src/renderer/src/extensions/gamemode_management/index.ts
-@@ -31,6 +31,7 @@ import GameStoreHelperInstance from "../../util/GameStoreHelper";
+@@ -32,6 +32,7 @@ import GameStoreHelper from "../../util/GameStoreHelper";
  import { isContributed } from "../../util/isContributed";
  import local from "../../util/local";
  import { showError } from "../../util/message";
@@ -55,7 +55,7 @@ index 9b3277134..8da456558 100644
  import opn from "../../util/opn";
  import { activeGameId, activeProfile } from "../../util/selectors";
  import { getSafe } from "../../util/storeHelper";
-@@ -181,7 +182,7 @@ function refreshGameInfo(store: Redux.Store<IState>, gameId: string): PromiseBB<
+@@ -183,7 +184,7 @@ function refreshGameInfo(store: Redux.Store<IState>, gameId: string): PromiseBB<
  
  function verifyGamePath(game: IGame, gamePath: string): PromiseBB<void> {
    return PromiseBB.map(game.requiredFiles || [], (file) =>
@@ -64,7 +64,7 @@ index 9b3277134..8da456558 100644
    )
      .then(() => undefined)
      .catch((err) => {
-@@ -315,7 +316,7 @@ function browseGameLocation(api: IExtensionApi, gameId: string): PromiseBB<void>
+@@ -317,7 +318,7 @@ function browseGameLocation(api: IExtensionApi, gameId: string): PromiseBB<void>
              return manualGameStoreSelection(api, corrected);
            })
            .then(({ corrected, store }) => {
@@ -73,7 +73,7 @@ index 9b3277134..8da456558 100644
              if (executable === game.executable()) {
                executable = undefined;
              }
-@@ -489,7 +490,7 @@ function removeDisappearedGames(
+@@ -491,7 +492,7 @@ function removeDisappearedGames(
        return PromiseBB.resolve();
      }
      return PromiseBB.map(requiredFiles, (file) =>
@@ -83,7 +83,7 @@ index 9b3277134..8da456558 100644
        .then(() => undefined)
        .catch((err) => {
 diff --git a/src/renderer/src/extensions/gamemode_management/util/discovery.ts b/src/renderer/src/extensions/gamemode_management/util/discovery.ts
-index ed4c17cf5..7a866b4d8 100644
+index 5858ecd..9c2e68f 100644
 --- a/src/renderer/src/extensions/gamemode_management/util/discovery.ts
 +++ b/src/renderer/src/extensions/gamemode_management/util/discovery.ts
 @@ -4,7 +4,6 @@ import { getErrorCode, getErrorMessageOrDefault, unknownToError } from "@vortex/
@@ -94,20 +94,19 @@ index ed4c17cf5..7a866b4d8 100644
  
  import type { IDiscoveredTool } from "../../../types/IDiscoveredTool";
  import type { IExtensionApi } from "../../../types/IExtensionContext";
-@@ -19,10 +18,12 @@ import type { Normalize } from "../../../util/getNormalizeFunc";
+@@ -20,9 +19,11 @@ import type { Normalize } from "../../../util/getNormalizeFunc";
  import getNormalizeFunc from "../../../util/getNormalizeFunc";
  import getVortexPath from "../../../util/getVortexPath";
  import { log } from "../../../util/log";
 +import { resolveNativeExecutable, resolvePlatformPath } from "../../../util/nativeExecutable";
  import StarterInfo from "../../../util/StarterInfo";
  import { getSafe } from "../../../util/storeHelper";
- import * as storeLookup from "../../../util/storeLookup";
  import { truthy } from "../../../util/util";
 +import { getVolumePath } from "../../../util/volume";
  import { modPathsForGame } from "../../mod_management/selectors";
  import type { IDiscoveryResult } from "../types/IDiscoveryResult";
  import type { IToolStored } from "../types/IToolStored";
-@@ -60,7 +61,7 @@ export function quickDiscoveryTools(
+@@ -58,7 +59,7 @@ export function quickDiscoveryTools(
            return autoGenIcon(tool, toolPath, gameId).then(() => {
              onDiscoveredTool(gameId, {
                ...tool,
@@ -116,7 +115,7 @@ index ed4c17cf5..7a866b4d8 100644
                hidden: false,
                parameters: tool.parameters || [],
                custom: false,
-@@ -81,7 +82,7 @@ export function quickDiscoveryTools(
+@@ -79,7 +80,7 @@ export function quickDiscoveryTools(
                return autoGenIcon(tool, resolvedPath, gameId).then(() => {
                  onDiscoveredTool(gameId, {
                    ...tool,
@@ -125,7 +124,7 @@ index ed4c17cf5..7a866b4d8 100644
                    hidden: false,
                    parameters: tool.parameters || [],
                    custom: false,
-@@ -253,7 +254,7 @@ function handleDiscoveredGame(
+@@ -250,7 +251,7 @@ function handleDiscoveredGame(
      return undefined;
    }
    log("info", "found game", { name: game.name, location: resolvedPath, store });
@@ -134,7 +133,7 @@ index ed4c17cf5..7a866b4d8 100644
    const disco: IDiscoveryResult = {
      path: resolvedPath,
      executable: exe !== game.executable() ? exe : undefined,
-@@ -463,7 +464,7 @@ function verifyToolDir(tool: ITool, testPath: string): Bluebird<void> {
+@@ -454,7 +455,7 @@ function verifyToolDir(tool: ITool, testPath: string): Bluebird<void> {
      // is not something we want at this point because we don't even know yet if the user
      // wants to manage the game at all.
      (fileName: string) =>
@@ -143,7 +142,7 @@ index ed4c17cf5..7a866b4d8 100644
          return Bluebird.reject(err);
        }),
    ).then(() => undefined);
-@@ -572,7 +573,7 @@ function testApplicationDirValid(
+@@ -563,7 +564,7 @@ function testApplicationDirValid(
      .then(() => {
        const game = application as IGame;
        if (game.queryModPath !== undefined) {
@@ -152,7 +151,7 @@ index ed4c17cf5..7a866b4d8 100644
          const disco: IDiscoveryResult = {
            path: testPath,
            executable: exe !== game.executable() ? exe : undefined,
-@@ -581,7 +582,7 @@ function testApplicationDirValid(
+@@ -572,7 +573,7 @@ function testApplicationDirValid(
  
          return discoverRelativeTools(game, testPath, discoveredGames, onDiscoveredTool, normalize);
        } else {
@@ -161,7 +160,7 @@ index ed4c17cf5..7a866b4d8 100644
          return autoGenIcon(application, exePath, gameId).then(() => {
            onDiscoveredTool(gameId, {
              ...application,
-@@ -769,12 +770,12 @@ export async function suggestStagingPath(api: IExtensionApi, gameId: string): Pr
+@@ -760,12 +761,12 @@ export async function suggestStagingPath(api: IExtensionApi, gameId: string): Pr
  
    let suggestion: string;
  
@@ -176,49 +175,59 @@ index ed4c17cf5..7a866b4d8 100644
      suggestion = path.join(volume, state.settings.mods.suggestInstallPathDirectory, "{game}");
    }
  
-diff --git a/src/renderer/src/extensions/gamemode_management/util/getGameVersion.ts b/src/renderer/src/extensions/gamemode_management/util/getGameVersion.ts
-index 8c6d5a864..62df144e9 100644
---- a/src/renderer/src/extensions/gamemode_management/util/getGameVersion.ts
-+++ b/src/renderer/src/extensions/gamemode_management/util/getGameVersion.ts
-@@ -1,5 +1,4 @@
- import { stat } from "node:fs/promises";
--import path from "node:path";
- 
- import { getErrorMessageOrDefault } from "@vortex/shared";
- import { ProcessCanceled } from "@vortex/shared/errors";
-@@ -8,6 +7,7 @@ import exeVersion from "exe-version";
- import { log } from "@/logging";
+diff --git a/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
+index a22d248..2a4bc0f 100644
+--- a/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
++++ b/src/renderer/src/extensions/gameversion_management/util/getGameVersion.ts
+@@ -1,11 +1,10 @@
+-import path from "path";
+-
+ import type * as exeVersionT from "exe-version";
  
  import type { IGame } from "../../../types/IGame";
+ import { statAsync } from "../../../util/fs";
+ import lazyRequire from "../../../util/lazyRequire";
+ import { log } from "../../../util/log";
 +import { resolveNativeExecutable, resolvePlatformPath } from "../../../util/nativeExecutable";
- import type { IDiscoveryResult } from "../types/IDiscoveryResult";
+ import type { IDiscoveryResult } from "../../gamemode_management/types/IDiscoveryResult";
  
- export type GameVersionResolver = (game: IGame, discovery: IDiscoveryResult) => Promise<string>;
-@@ -17,7 +17,11 @@ async function fromExtension(game: IGame, discovery: IDiscoveryResult): Promise<
- }
- 
- async function fromExecutable(game: IGame, discovery: IDiscoveryResult): Promise<string> {
--  const exePath = path.join(discovery.path, discovery.executable || game.executable());
-+  const exeName = resolveNativeExecutable(
+ const exeVersion: typeof exeVersionT = lazyRequire(() => require("exe-version"));
+@@ -36,7 +35,10 @@ export async function testExecProvider(game: IGame, discovery: IDiscoveryResult)
+     // can be caused by a broken extension
+     return Promise.resolve(false);
+   }
+-  const exePath = path.join(discovery.path, exeName);
++  const exePath = resolvePlatformPath(
 +    discovery.path,
-+    discovery.executable || game.executable(),
++    resolveNativeExecutable(discovery.path, exeName),
 +  );
-+  const exePath = resolvePlatformPath(discovery.path, exeName);
- 
    try {
-     await stat(exePath);
+     await statAsync(exePath);
+     const version: string = exeVersion.default(exePath);
+@@ -51,7 +53,10 @@ export async function getExecGameVersion(
+   game: IGame,
+   discovery: IDiscoveryResult,
+ ): Promise<string> {
+-  const exePath = path.join(discovery.path, discovery.executable || game.executable());
++  const exePath = resolvePlatformPath(
++    discovery.path,
++    resolveNativeExecutable(discovery.path, discovery.executable || game.executable()),
++  );
+   try {
+     const version: string = exeVersion.default(exePath);
+     return Promise.resolve(version);
 diff --git a/src/renderer/src/util/StarterInfo.ts b/src/renderer/src/util/StarterInfo.ts
-index 3e13fbc67..976df7b9c 100644
+index 54fc347..9838632 100644
 --- a/src/renderer/src/util/StarterInfo.ts
 +++ b/src/renderer/src/util/StarterInfo.ts
-@@ -26,6 +26,7 @@ import {
- import { emitGameLaunched, recordLaunchExit } from "./gameLaunchAnalytics";
+@@ -27,6 +27,7 @@ import { emitGameLaunched, recordLaunchExit } from "./gameLaunchAnalytics";
+ import GameStoreHelper from "./GameStoreHelper";
  import getVortexPath from "./getVortexPath";
  import { isWindowsExecutable } from "./linux/proton";
 +import { resolvePlatformPath } from "./nativeExecutable";
  import type { Steam, ISteamEntry } from "./Steam";
  import { getSafe } from "./storeHelper";
- import * as storeLookup from "./storeLookup";
+ 
 @@ -487,7 +488,10 @@ class StarterInfo implements IStarterInfo {
  
    private initFromGame(game: IGameStored, gameDiscovery: IDiscoveryResult) {

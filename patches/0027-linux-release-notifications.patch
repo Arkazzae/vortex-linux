@@ -643,3 +643,18 @@ index 0000000..05dc6cf
 +    { once: true },
 +  );
 +}
+diff --git a/src/renderer/src/extensions/updater/index.test.ts b/src/renderer/src/extensions/updater/index.test.ts
+index 7d48a88..b3c41c4 100644
+--- a/src/renderer/src/extensions/updater/index.test.ts
++++ b/src/renderer/src/extensions/updater/index.test.ts
+@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ import type { IExtensionContext } from "../../types/IExtensionContext";
+ 
++// Exercise the upstream updater independently of metadata stamped by makepkg.
++// The Linux package notification route is covered in linuxRelease.test.ts.
++vi.mock("./linuxBuild", () => ({ LINUX_PACKAGE_VERSION: "" }));
++
+ vi.mock("../../util/application", () => ({
+   getApplication: () => ({ version: "2.6.0-beta.1" }),
+ }));

@@ -192,10 +192,10 @@ index 000000000..706978228
 +  });
 +});
 diff --git a/src/renderer/src/util/StarterInfo.ts b/src/renderer/src/util/StarterInfo.ts
-index 976df7b9c..9a25e6f6d 100644
+index 9838632..2284214 100644
 --- a/src/renderer/src/util/StarterInfo.ts
 +++ b/src/renderer/src/util/StarterInfo.ts
-@@ -70,46 +70,57 @@ type OnShowErrorFunc = (
+@@ -70,44 +70,55 @@ type OnShowErrorFunc = (
    allowReport?: boolean,
  ) => void;
  
@@ -246,7 +246,7 @@ index 976df7b9c..9a25e6f6d 100644
    }
  
    try {
-     const steamStore = storeLookup.getGameStore(getGameStoresSafe(), "steam") as Steam;
+     const steamStore = GameStoreHelper.getGameStore("steam") as Steam;
 -    const games = await steamStore.allGames();
 -
 -    // Find the game entry that matches this executable's location
@@ -261,10 +261,10 @@ index 976df7b9c..9a25e6f6d 100644
 -      error: err?.message,
 -    });
 +    log("debug", "Could not resolve Steam game entry", { error: err?.message });
-     return undefined;
-   }
- }
- 
++    return undefined;
++  }
++}
++
 +/**
 + * Check if a tool should run through the matching Steam game's Proton prefix.
 + * Full games must be handed to Steam so it can apply the selected compatibility
@@ -272,14 +272,12 @@ index 976df7b9c..9a25e6f6d 100644
 + */
 +async function shouldRunWithProton(info: IStarterInfo): Promise<ISteamEntry | undefined> {
 +  if (info.isGame || !isWindowsExecutable(info.exePath)) {
-+    return undefined;
-+  }
+     return undefined;
+   }
 +  return findSteamEntry(info);
-+}
-+
+ }
+ 
  /**
-  * wrapper for information about a game or tool, combining static and runtime/discovery information
-  * for the purpose of actually starting them in a uniform way.
 @@ -188,12 +199,7 @@ class StarterInfo implements IStarterInfo {
            .then(() => {
              // assuming that runThroughLauncher returns immediately on handing things off
@@ -302,7 +300,7 @@ index 976df7b9c..9a25e6f6d 100644
 -    const protonGameEntry = await shouldRunWithProton(info, api);
 +    const steamGameEntry = info.isGame ? await findSteamEntry(info) : undefined;
 +    if (steamGameEntry !== undefined) {
-+      const steamStore = storeLookup.getGameStore(getGameStoresSafe(), "steam") as Steam;
++      const steamStore = GameStoreHelper.getGameStore("steam") as Steam;
 +      try {
 +        await steamStore.launchGame(
 +          { appId: steamGameEntry.appid, parameters: info.commandLine },
