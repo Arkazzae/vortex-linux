@@ -229,7 +229,7 @@ fs.writeFileSync(
 NODE
 
   export npm_config_runtime='electron'
-  export npm_config_target='43.0.0'
+  export npm_config_target='44.2.0'
   export npm_config_disturl='https://electronjs.org/headers'
   # pnpm builds native addons in parallel, and each node-gyp process would
   # otherwise download and extract the Electron headers into the same cache
@@ -252,7 +252,7 @@ build() {
   export NO_PARALLEL=1
   export VORTEX_SKIP_SUBMODULES=1
   export npm_config_runtime='electron'
-  export npm_config_target='43.0.0'
+  export npm_config_target='44.2.0'
   export npm_config_disturl='https://electronjs.org/headers'
 
   (
@@ -285,8 +285,8 @@ build() {
 
   pnpm nx run @vortex/main:publish
 
-  # leveldown 5.6.0 ships an old N-API prebuild. Under Electron 43 / Node 24 that
-  # prebuild segfaults in snappy::CompressFragment while Vortex updates its
+  # leveldown 5.6.0 ships an old N-API prebuild that can segfault
+  # under modern Electron / Node in snappy::CompressFragment while Vortex updates its
   # metadata database, causing Electron to restart the renderer indefinitely.
   # Use the rebuilt addon in both lookup locations.
   local leveldown_dir="$srcdir/vortex/src/main/dist/node_modules/leveldown"
@@ -302,7 +302,7 @@ build() {
     CFLAGS="$leveldown_cflags" \
       CXXFLAGS="$leveldown_cflags -Wp,-D_GLIBCXX_ASSERTIONS" \
       npm_config_runtime='electron' \
-      npm_config_target='43.0.0' \
+      npm_config_target='44.2.0' \
       npm_config_disturl='https://electronjs.org/headers' \
       "$srcdir/vortex/src/main/dist/node_modules/.bin/node-gyp" rebuild
   )
