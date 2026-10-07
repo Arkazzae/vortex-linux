@@ -1,6 +1,6 @@
 pkgbase = vortex-linux
 	pkgdesc = Community build of Vortex with generic Linux compatibility patches
-	pkgver = 2.7.2
+	pkgver = 2.8.0
 	pkgrel = 1
 	url = https://github.com/Arkazzae/vortex-linux
 	install = vortex.install
@@ -44,7 +44,7 @@ pkgbase = vortex-linux
 	depends = xdg-utils
 	optdepends = kde-cli-tools: native trash support on KDE Plasma
 	optdepends = pipewire: screen sharing under Wayland
-	provides = vortex=2.7.2
+	provides = vortex=2.8.0
 	conflicts = vortex
 	conflicts = vortex-bin
 	conflicts = vortex-git
@@ -57,7 +57,7 @@ pkgbase = vortex-linux
 	noextract = windowsdesktop-runtime-10.0.10-win-x64.zip
 	options = !debug
 	options = !strip
-	source = vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=41be6d4556568a605d6131b8c5ca90ff26dec6ac
+	source = vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=29cd69a56bae618d8d345a2f1a65168f8a6535c4
 	source = pnpm-11.10.0.tgz::https://registry.npmjs.org/pnpm/-/pnpm-11.10.0.tgz
 	source = libloot-136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1.tar.gz::https://codeload.github.com/loot/libloot/tar.gz/136f3983c3eec7d377f83a7e7e0b0129aa5c8fe1
 	source = 0001-linux-runtime-compatibility.patch
