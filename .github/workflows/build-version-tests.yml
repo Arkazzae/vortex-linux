@@ -1,0 +1,25 @@
+name: Version builder tests
+
+on:
+  push:
+    paths:
+      - "scripts/build-version.py"
+      - "tests/test_build_version.py"
+      - ".github/workflows/build-version*.yml"
+  pull_request:
+    paths:
+      - "scripts/build-version.py"
+      - "tests/test_build_version.py"
+      - ".github/workflows/build-version*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test version selection and isolated builds
+        run: python3 -m unittest discover -s tests -p 'test_build_version.py' -v

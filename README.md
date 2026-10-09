@@ -106,6 +106,25 @@ Patches live in `patches/`, in the order listed by `_patches` in `PKGBUILD`.
 after changing patches or package metadata. `scripts/build-arch-package.sh`
 prepares this directory automatically.
 
+### Building an older version
+
+For collections that need a particular version, the builder uses its existing
+Linux recipe and patches in a separate build directory. Local builds need Python
+3.12+, Git, Arch Linux and the selected recipe's build dependencies.
+
+```sh
+python3 scripts/build-version.py --list
+python3 scripts/build-version.py --version 2.7.1
+```
+
+Artifacts go to `dist/versions/2.7.1/artifacts/`. Use `--help` for format selection,
+recipe inspection and choosing a packaging ref. Shallow clones need the full history.
+
+You can also run **Actions → Build a selected Vortex version** and download the workflow artifacts.
+
+Vortex 1.16.9 still needs a Linux port for its older Yarn/webpack layout.
+Historical recipes may need dependency updates; installed versions share application data.
+
 ## How it's tested
 
 CI applies every patch, runs the affected tests, builds and tests native LOOT, and typechecks the renderer and plugin management. Changes on `master` build both release formats; an unpublished package revision publishes them together.
