@@ -169,14 +169,19 @@ async function testCollectionPatching(extensionPath, root) {
   console.log('Collections: native binary diff and patch round trip passed');
 }
 
-function archiveFactory(extensionPath, expectedType) {
+function archiveFactory(extensionPath, expectedType, appPath) {
   let factory;
   const originalLoad = Module._load;
+  const appRequire = appPath ? Module.createRequire(path.join(appPath, 'package.json')) : undefined;
   try {
     // Supply only Vortex's extension registration interface; archive parsing stays real.
     Module._load = function load(request, parent, isMain) {
       if (request === 'vortex-api') {
         return { fs, util: { NotSupportedError: class NotSupportedError extends Error {} } };
+      }
+      // Unpacked extensions share app.asar dependencies through Vortex's extension loader.
+      if (appRequire && ['bluebird', 'minimatch'].includes(request)) {
+        return originalLoad.call(this, appRequire.resolve(request), parent, isMain);
       }
       return originalLoad.call(this, request, parent, isMain);
     };
@@ -193,8 +198,8 @@ function archiveFactory(extensionPath, expectedType) {
   return factory;
 }
 
-async function testArchives(bundledPlugins, root) {
-  const bsa = archiveFactory(path.join(bundledPlugins, 'gamebryo-bsa-support'), 'bsa');
+async function testArchives(bundledPlugins, root, appPath) {
+  const bsa = archiveFactory(path.join(bundledPlugins, 'gamebryo-bsa-support'), 'bsa', appPath);
   const source = path.join(root, 'archive-payload.txt');
   fs.writeFileSync(source, 'collection archive payload');
   for (const version of ['103', '104', '105']) {
@@ -208,7 +213,7 @@ async function testArchives(bundledPlugins, root) {
     assert.equal(fs.readFileSync(path.join(outputPath, 'Meshes/Fixture/payload.nif'), 'utf8'),
       'collection archive payload');
   }
-  const ba2 = archiveFactory(path.join(bundledPlugins, 'gamebryo-ba2-support'), 'ba2');
+  const ba2 = archiveFactory(path.join(bundledPlugins, 'gamebryo-ba2-support'), 'ba2', appPath);
   const payload = Buffer.from('Fallout 4 collection archive payload '.repeat(32));
   const compressed = zlib.deflateSync(payload);
   const name = Buffer.from('Scripts\\Collection.pex');
@@ -263,7 +268,7 @@ async function testRuntime(appPath) {
     await testFalloutLoot(path.join(bundledPlugins, 'gamebryo-plugin-management'), root);
     await testFomod(appPath, root);
     await testCollectionPatching(path.join(bundledPlugins, 'collections'), root);
-    await testArchives(bundledPlugins, root);
+    await testArchives(bundledPlugins, root, appPath);
     await testWindowsDotnet(root);
     console.log(`Vortex ${PACKAGE_VERSION}: packaged Linux runtime fixtures passed`);
   } finally {
