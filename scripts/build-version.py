@@ -42,9 +42,30 @@ def assignment(contents, name):
     return next(value for value in match.groups() if value is not None)
 
 
+def recipe_at(commit, version):
+    """Find a self-contained version recipe, otherwise use the root recipe."""
+    recipe_path = f"recipes/{version}"
+    if not git("ls-tree", "--name-only", commit, "--", f"{recipe_path}/PKGBUILD"):
+        recipe_path = "."
+    contents = git("show", f"{commit}:{Path(recipe_path) / 'PKGBUILD'}")
+    return contents, recipe_path
+
+
 def recipes():
-    """Prefer release snapshots; fall back to branch history for untagged ports."""
+    """Prefer maintained version recipes, then releases, then branch history."""
     seen = set()
+    head = git("rev-parse", "HEAD")
+    for path in git("ls-tree", "-r", "--name-only", head, "--", "recipes").splitlines():
+        match = re.fullmatch(rf"recipes/({VERSION_PATTERN})/PKGBUILD", path)
+        if not match:
+            continue
+        version = match[1]
+        contents, recipe_path = recipe_at(head, version)
+        if assignment(contents, "pkgver") != version:
+            raise BuildError(f"{path} does not match its version directory {version}")
+        seen.add(version)
+        yield version, head, contents, recipe_path
+
     tags = []
     for ref in git("for-each-ref", "--format=%(refname)", "refs/tags").splitlines():
         match = re.fullmatch(rf"refs/tags/v({VERSION_PATTERN})-([1-9][0-9]*)", ref)
@@ -54,11 +75,11 @@ def recipes():
         if version in seen:
             continue
         commit = git("rev-parse", "--verify", f"{ref}^{{commit}}")
-        contents = git("show", f"{commit}:PKGBUILD")
+        contents, recipe_path = recipe_at(commit, version)
         if (assignment(contents, "pkgver"), assignment(contents, "pkgrel")) != (version, str(release)):
             raise BuildError(f"Release tag {ref} does not match its PKGBUILD version/revision")
         seen.add(version)
-        yield version, commit, contents
+        yield version, commit, contents, recipe_path
 
     for commit in git("rev-list", "--first-parent", "HEAD").splitlines():
         try:
@@ -68,38 +89,39 @@ def recipes():
         version = assignment(contents, "pkgver")
         if version not in seen:
             seen.add(version)
-            yield version, commit, contents
+            yield version, commit, contents, "."
 
 
 def select_recipe(version, packaging_ref):
     if packaging_ref:
         commit = git("rev-parse", "--verify", "--end-of-options", f"{packaging_ref}^{{commit}}")
-        contents = git("show", f"{commit}:PKGBUILD")
+        contents, recipe_path = recipe_at(commit, version)
         actual_version = assignment(contents, "pkgver")
         if actual_version != version:
             raise BuildError(
                 f"Packaging ref {packaging_ref} builds Vortex {actual_version}, not {version}. "
                 "Use a ref containing a Linux port for the requested version."
             )
-        return commit, contents
+        return commit, contents, recipe_path
 
-    for candidate_version, commit, contents in recipes():
+    for candidate_version, commit, contents, recipe_path in recipes():
         if candidate_version == version:
-            return commit, contents
+            return commit, contents, recipe_path
     if git("rev-parse", "--is-shallow-repository") == "true":
         raise BuildError(
             f"No Linux recipe for Vortex {version} in this shallow checkout. "
             "Run git fetch --unshallow --tags, then retry."
         )
     raise BuildError(
-        f"No Linux packaging recipe for Vortex {version} in local release tags or this branch's history. "
+        f"No Linux packaging recipe for Vortex {version} in committed recipes/, "
+        "local release tags or this branch's history. "
         "Use --list to see available versions, or --packaging-ref REF to select "
         "a committed Linux port on another branch/tag. An upstream tag alone is "
         "not a Linux port; older source layouts need their own patches and build recipe."
     )
 
 
-def validate_recipe(commit, contents, version, build_format):
+def validate_recipe(commit, contents, version, build_format, recipe_path="."):
     if assignment(contents, "pkgname") != "vortex-linux":
         raise BuildError("The selected recipe is not a vortex-linux package")
     release = assignment(contents, "pkgrel")
@@ -109,7 +131,7 @@ def validate_recipe(commit, contents, version, build_format):
     if not re.fullmatch(r"[0-9a-fA-F]{40}", upstream):
         raise BuildError("The selected recipe must pin a full upstream Git commit")
 
-    srcinfo = git("show", f"{commit}:.SRCINFO")
+    srcinfo = git("show", f"{commit}:{Path(recipe_path) / '.SRCINFO'}")
     for field, expected in (("pkgver", version), ("pkgrel", release)):
         values = re.findall(rf"^\s*{field} = (.+)$", srcinfo, re.MULTILINE)
         if values != [expected]:
@@ -123,17 +145,20 @@ def validate_recipe(commit, contents, version, build_format):
     if build_format != "arch":
         required.append("scripts/build-appimage.sh")
     for path in required:
-        if git("cat-file", "-t", f"{commit}:{path}") != "blob":
+        if git("cat-file", "-t", f"{commit}:{Path(recipe_path) / path}") != "blob":
             raise BuildError(f"The selected recipe is missing {path}")
     return release, upstream
 
 
-def export_source(commit, destination):
+def export_source(commit, destination, recipe_path="."):
     # Export the whole snapshot: old recipes keep patches at the root, newer
-    # ones stage patches/ themselves. Local-file checksums must stay intact.
+    # ones stage patches/ themselves. Version directories are standalone trees
+    # and must never inherit scripts, patches or assets from the modern root.
+    # Local-file checksums must stay intact.
+    tree = commit if recipe_path == "." else f"{commit}:{recipe_path}"
     with tempfile.TemporaryFile() as archive_file:
         subprocess.run(
-            ["git", "-C", str(REPOSITORY_ROOT), "archive", "--format=tar", commit],
+            ["git", "-C", str(REPOSITORY_ROOT), "archive", "--format=tar", tree],
             stdout=archive_file, check=True,
         )
         archive_file.seek(0)
@@ -170,21 +195,21 @@ def main(argv=None):
                "recipe's dependencies. Only committed files are used. No release is published.",
     )
     parser.add_argument("--version", help="Exact Vortex version, e.g. 2.7.1 or v2.7.1")
-    parser.add_argument("--packaging-ref", help="Override automatic release/history selection with a local Git ref")
+    parser.add_argument("--packaging-ref", help="Select recipes/VERSION or the root recipe at a local Git ref")
     parser.add_argument("--format", choices=("arch", "appimage", "both"), default="both")
     parser.add_argument("--output-dir", type=Path, help="Empty output directory (default: dist/versions/VERSION)")
     parser.add_argument("--prepare-only", action="store_true", help="Export the recipe without downloading or building")
-    parser.add_argument("--list", action="store_true", help="List recipes available in local release tags and branch history")
+    parser.add_argument("--list", action="store_true", help="List committed version recipes, local releases and historical ports")
     args = parser.parse_args(argv)
 
     if args.list:
         if args.version or args.packaging_ref or args.output_dir or args.prepare_only:
             parser.error("--list cannot be combined with build options")
-        print("Vortex version\tPackage revision\tPackaging commit")
-        for version, commit, contents in sorted(
+        print("Vortex version\tPackage revision\tPackaging commit\tRecipe path")
+        for version, commit, contents, recipe_path in sorted(
             recipes(), key=lambda recipe: tuple(int(part) for part in recipe[0].split(".")), reverse=True,
         ):
-            print(f"{version}\t{version}-{assignment(contents, 'pkgrel')}\t{commit}")
+            print(f"{version}\t{version}-{assignment(contents, 'pkgrel')}\t{commit}\t{recipe_path}")
         if git("rev-parse", "--is-shallow-repository") == "true":
             print("History is shallow; run git fetch --unshallow --tags for older recipes.", file=sys.stderr)
         return 0
@@ -197,8 +222,8 @@ def main(argv=None):
     if not args.prepare_only and os.geteuid() == 0:
         raise BuildError("Build as an unprivileged user; makepkg cannot run as root")
 
-    commit, contents = select_recipe(version, args.packaging_ref)
-    release, upstream = validate_recipe(commit, contents, version, args.format)
+    commit, contents, recipe_path = select_recipe(version, args.packaging_ref)
+    release, upstream = validate_recipe(commit, contents, version, args.format, recipe_path)
     output = (args.output_dir or REPOSITORY_ROOT / "dist/versions" / version).absolute()
     if any(character in str(output) for character in "\r\n"):
         raise BuildError("Output directory cannot contain line breaks")
@@ -207,12 +232,13 @@ def main(argv=None):
     output.mkdir(parents=True, exist_ok=True)
     output = output.resolve()
     source = output / "source"
-    export_source(commit, source)
+    export_source(commit, source, recipe_path)
 
     manifest = {
         "package_version": version,
         "package_revision": f"{version}-{release}",
         "packaging_commit": commit,
+        "recipe_path": recipe_path,
         "upstream_commit": upstream,
         "format": args.format,
     }
@@ -225,6 +251,7 @@ def main(argv=None):
 
     print(f"Prepared Vortex {version}-{release} from packaging commit {commit}")
     print(f"Upstream commit: {upstream}")
+    print(f"Recipe path: {recipe_path}")
     print(f"Packaging source: {source}")
     print(f"Build manifest: {output / 'build-manifest.json'}", flush=True)
     if args.prepare_only:

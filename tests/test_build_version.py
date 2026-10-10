@@ -90,21 +90,30 @@ class BuildVersionTests(unittest.TestCase):
         path.write_text(contents)
         return path
 
-    def recipe(self, version, revision):
-        self.write("PKGBUILD", (
+    def recipe(self, version, revision, recipe_path="."):
+        self.write(Path(recipe_path) / "PKGBUILD", (
             "pkgname=vortex-linux\n"
             f"pkgver={version}\n"
             f"pkgrel={revision}\n"
             f"_upstream_commit='{UPSTREAM_COMMIT}'\n"
             "source=(\"vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit=$_upstream_commit\")\n"
         ))
-        self.write(".SRCINFO", (
+        self.write(Path(recipe_path) / ".SRCINFO", (
             "pkgbase = vortex-linux\n"
             f"\tpkgver = {version}\n"
             f"\tpkgrel = {revision}\n"
             f"\tsource = vortex::git+https://github.com/Nexus-Mods/Vortex.git#commit={UPSTREAM_COMMIT}\n"
             "pkgname = vortex-linux\n"
         ))
+
+    def maintained_recipe(self, version="1.16.9", revision="1"):
+        recipe_path = Path("recipes") / version
+        self.recipe(version, revision, recipe_path)
+        self.write(recipe_path / "patches/fix.patch", f"maintained {version} patch\n")
+        for name in ("build-arch-package.sh", "build-appimage.sh"):
+            self.write(recipe_path / "scripts" / name, FAKE_BUILD_SCRIPT).chmod(0o755)
+        self.write(recipe_path / "appimage/AppRun", "#!/bin/sh\necho legacy AppRun\n").chmod(0o755)
+        return recipe_path
 
     def git(self, *arguments):
         result = subprocess.run(
@@ -161,6 +170,7 @@ class BuildVersionTests(unittest.TestCase):
         self.assertEqual(manifest["package_version"], "2.7.1")
         self.assertEqual(manifest["package_revision"], "2.7.1-2")
         self.assertEqual(manifest["packaging_commit"], self.latest_old_commit)
+        self.assertEqual(manifest["recipe_path"], ".")
         self.assertEqual(manifest["upstream_commit"], UPSTREAM_COMMIT)
         self.assertEqual(manifest["format"], "both")
         self.assertFalse((self.directory / "build-log.jsonl").exists())
@@ -171,6 +181,133 @@ class BuildVersionTests(unittest.TestCase):
                          "--output-dir", str(output), "--prepare-only")
         self.assertEqual(self.manifest(output)["packaging_commit"], self.old_commit)
         self.assertEqual((output / "source/patches/fix.patch").read_text(), "original older patch\n")
+
+    def test_maintained_recipe_exports_only_its_own_committed_files(self):
+        recipe_path = self.maintained_recipe()
+        self.write("modern-only-file", "current port assets\n")
+        recipe_commit = self.commit("Maintain the legacy port beside the current one")
+        self.write(recipe_path / "patches/fix.patch", "uncommitted legacy patch\n")
+        self.write(recipe_path / "private-untracked-file", "local only\n")
+
+        self.run_builder("--version", "v1.16.9", "--prepare-only")
+
+        output = self.output("1.16.9")
+        snapshot = output / "source"
+        manifest = self.manifest(output)
+        self.assertEqual(manifest["recipe_path"], "recipes/1.16.9")
+        self.assertEqual(manifest["packaging_commit"], recipe_commit)
+        self.assertEqual(manifest["package_version"], "1.16.9")
+        self.assertEqual(manifest["package_revision"], "1.16.9-1")
+        self.assertIn("pkgver=1.16.9\n", (snapshot / "PKGBUILD").read_text())
+        self.assertEqual((snapshot / "patches/fix.patch").read_text(), "maintained 1.16.9 patch\n")
+        self.assertEqual((snapshot / "appimage/AppRun").stat().st_mode & 0o777, 0o755)
+        self.assertFalse((snapshot / "modern-only-file").exists())
+        self.assertFalse((snapshot / "recipes").exists())
+        self.assertFalse((snapshot / "private-untracked-file").exists())
+        self.assertIn("pkgver=2.8.0\n", (self.repository / "PKGBUILD").read_text())
+        self.assertEqual((self.repository / recipe_path / "patches/fix.patch").read_text(), "uncommitted legacy patch\n")
+
+    def test_maintained_recipe_precedes_historical_root_release(self):
+        self.git("tag", "v2.7.1-2", self.old_commit)
+        self.maintained_recipe("2.7.1", "3")
+        recipe_commit = self.commit("Update the maintained older port")
+
+        self.run_builder("--version", "2.7.1", "--prepare-only")
+
+        self.assertEqual(self.manifest()["packaging_commit"], recipe_commit)
+        self.assertEqual(self.manifest()["package_revision"], "2.7.1-3")
+        self.assertEqual(self.manifest()["recipe_path"], "recipes/2.7.1")
+
+    def test_explicit_ref_selects_the_maintained_recipe_at_that_revision(self):
+        recipe_path = self.maintained_recipe()
+        old_recipe_commit = self.commit("Original maintained legacy port")
+        self.git("tag", "legacy-snapshot", old_recipe_commit)
+        self.recipe("1.16.9", "2", recipe_path)
+        self.write(recipe_path / "patches/fix.patch", "newer maintained legacy patch\n")
+        self.commit("Update legacy recipe")
+
+        self.run_builder("--version", "1.16.9", "--packaging-ref", "legacy-snapshot", "--prepare-only")
+
+        output = self.output("1.16.9")
+        self.assertEqual(self.manifest(output)["packaging_commit"], old_recipe_commit)
+        self.assertEqual(self.manifest(output)["recipe_path"], "recipes/1.16.9")
+        self.assertEqual((output / "source/patches/fix.patch").read_text(), "maintained 1.16.9 patch\n")
+
+    def test_explicit_root_release_overrides_current_maintained_recipe(self):
+        self.maintained_recipe("2.7.1", "3")
+        self.commit("Maintain the older port separately")
+
+        self.run_builder("--version", "2.7.1", "--packaging-ref", "older-port", "--prepare-only")
+
+        self.assertEqual(self.manifest()["packaging_commit"], self.old_commit)
+        self.assertEqual(self.manifest()["recipe_path"], ".")
+
+    def test_list_includes_only_committed_version_recipes_without_duplicates(self):
+        self.maintained_recipe()
+        self.maintained_recipe("2.7.1", "3")
+        self.git("tag", "v2.7.1-2", self.old_commit)
+        recipe_commit = self.commit("Maintain multiple ports together")
+        self.maintained_recipe("1.15.0")
+
+        result = self.run_builder("--list")
+
+        rows = [line.split("\t") for line in result.stdout.splitlines()[1:]]
+        self.assertEqual([row[0] for row in rows], ["2.8.0", "2.7.1", "1.16.9"])
+        self.assertEqual(rows[1], ["2.7.1", "2.7.1-3", recipe_commit, "recipes/2.7.1"])
+        self.assertEqual(rows[2], ["1.16.9", "1.16.9-1", recipe_commit, "recipes/1.16.9"])
+        self.run_builder("--version", "1.15.0", "--prepare-only", success=False)
+        self.assertFalse(self.output("1.15.0").exists())
+
+    def test_maintained_recipe_version_must_match_its_directory(self):
+        recipe_path = self.maintained_recipe()
+        self.recipe("1.16.8", "1", recipe_path)
+        self.commit("Legacy recipe in the wrong version directory")
+
+        result = self.run_builder("--version", "1.16.9", "--prepare-only", success=False)
+
+        self.assertIn("1.16.9", result.stderr)
+        self.assertFalse(self.output("1.16.9").exists())
+
+    def test_maintained_recipe_srcinfo_is_validated_inside_its_directory(self):
+        recipe_path = self.maintained_recipe()
+        srcinfo = self.repository / recipe_path / ".SRCINFO"
+        srcinfo.write_text(srcinfo.read_text().replace("pkgrel = 1", "pkgrel = 2"))
+        self.commit("Mismatched legacy metadata")
+
+        result = self.run_builder("--version", "1.16.9", "--prepare-only", success=False)
+
+        self.assertIn("SRCINFO", result.stderr)
+        self.assertFalse(self.output("1.16.9").exists())
+
+    def test_maintained_recipe_cannot_borrow_missing_scripts_from_root(self):
+        recipe_path = self.maintained_recipe()
+        (self.repository / recipe_path / "scripts/build-appimage.sh").unlink()
+        self.commit("Legacy recipe supports only Arch packages")
+
+        self.run_builder("--version", "1.16.9", "--prepare-only", success=False)
+        self.assertFalse(self.output("1.16.9").exists())
+        self.run_builder("--version", "1.16.9", "--format", "arch", "--prepare-only")
+        self.assertFalse((self.output("1.16.9") / "source/scripts/build-appimage.sh").exists())
+
+    @unittest.skipIf(os.geteuid() == 0, "Actual builds intentionally reject root")
+    def test_maintained_recipe_builds_with_its_own_scripts_and_assets(self):
+        self.maintained_recipe()
+        for name in ("build-arch-package.sh", "build-appimage.sh"):
+            self.write("scripts/" + name, "#!/bin/sh\nexit 99\n")
+        self.commit("Separate legacy build tooling from the current port")
+        workflow_output = self.directory / "legacy-github-output"
+        environment = dict(self.environment, GITHUB_OUTPUT=str(workflow_output))
+
+        self.run_builder("--version", "1.16.9", environment=environment)
+
+        output = self.output("1.16.9")
+        calls = [json.loads(line) for line in (self.directory / "build-log.jsonl").read_text().splitlines()]
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(call["marker"] == "maintained 1.16.9 patch\n" for call in calls))
+        self.assertTrue(all(Path(call["script"]).parents[1] == output / "source" for call in calls))
+        self.assertTrue((output / "artifacts/Vortex-1.16.9-x86_64.AppImage").is_file())
+        outputs = dict(line.split("=", 1) for line in workflow_output.read_text().splitlines())
+        self.assertEqual(outputs["recipe_path"], "recipes/1.16.9")
 
     def test_release_tag_is_preferred_over_later_untagged_patches(self):
         # Work toward the next upstream release can change patches before the
