@@ -114,15 +114,15 @@ Linux recipe and patches in a separate build directory. Local builds need Python
 
 ```sh
 python3 scripts/build-version.py --list
-python3 scripts/build-version.py --version 2.7.1
+python3 scripts/build-version.py --version 1.16.9
 ```
 
-Artifacts go to `dist/versions/2.7.1/artifacts/`. Use `--help` for format selection,
+Artifacts go to `dist/versions/1.16.9/artifacts/`. Use `--help` for format selection,
 recipe inspection and choosing a packaging ref. Shallow clones need the full history.
 
 You can also run **Actions → Build a selected Vortex version** and download the workflow artifacts.
 
-Vortex 1.16.9 still needs a Linux port for its older Yarn/webpack layout.
+Vortex 1.16.9 has a separate legacy recipe in `recipes/1.16.9/`.
 Historical recipes may need dependency updates; installed versions share application data.
 
 ## How it's tested
