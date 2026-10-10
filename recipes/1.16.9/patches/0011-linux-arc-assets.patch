@@ -1,8 +1,8 @@
 diff --git a/extensions/mtframework-arc-support/download_arctool.js b/extensions/mtframework-arc-support/download_arctool.js
-index fad5aa7..6a7b7a9 100644
+index fad5aa7..6c7f0b3 100644
 --- a/extensions/mtframework-arc-support/download_arctool.js
 +++ b/extensions/mtframework-arc-support/download_arctool.js
-@@ -1,48 +1,59 @@
+@@ -1,48 +1,62 @@
  const fs = require('fs');
  const http = require('http');
 -const sevenzip = require('node-7z');
@@ -86,7 +86,10 @@ index fad5aa7..6a7b7a9 100644
 +  fs.mkdirSync(distDir, { recursive: true });
 +  const executable = path.join(distDir, 'ARCtool.exe');
 +  fs.rmSync(executable, { force: true });
-+  const sevenzip = process.platform === 'win32' ? require('7z-bin') : '7z';
++  // Yarn prepends node_modules/.bin, where the bundled 7z shim is not Linux-compatible.
++  const sevenzip = process.platform === 'linux'
++    ? '/usr/bin/7z'
++    : process.platform === 'win32' ? require('7z-bin') : '7z';
 +  execFileSync(sevenzip, ['x', '-y', dlPath, `-o${distDir}`, 'ARCtool.exe'], {
 +    stdio: 'inherit',
 +  });
