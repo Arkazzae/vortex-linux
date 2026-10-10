@@ -38,6 +38,7 @@ if ! apt-get install --quiet=2 --no-install-recommends --yes \
   wine \
   wine64 \
   xauth \
+  xdg-utils \
   xvfb >"$DEPENDENCY_LOG" 2>&1; then
   printf 'Unable to install clean-container runtime dependencies\n' >&2
   sed -n '1,240p' "$DEPENDENCY_LOG" >&2
@@ -71,6 +72,7 @@ runuser --user vortex-test -- env \
   APPIMAGE_EXTRACT_AND_RUN=1 \
   dbus-run-session -- \
   xvfb-run --auto-servernum /home/vortex-test/Vortex.AppImage --no-sandbox \
+    --disable-gpu \
     --remote-debugging-port=9222 >"$STARTUP_LOG" 2>&1 &
 app_pid=$!
 cleanup() {
