@@ -242,6 +242,9 @@ async function testArchives(bundledPlugins, root, appPath) {
 
 async function testWindowsDotnet(root) {
   const env = { ...process.env, WINEPREFIX: path.join(root, 'wine-prefix'), WINEARCH: 'win64', WINEDEBUG: '-all', WINEDLLOVERRIDES: 'mscoree,mshtml=' };
+  // Ubuntu 24.04's Wine 9 aborts during initialization whenever TMPDIR is set,
+  // even to /tmp. Keep its prefix isolated while using Wine's default temp path.
+  delete env.TMPDIR;
   try {
     assert.ok(process.env.VORTEX_DOTNET_WIN_ROOT, 'Bundled Windows .NET path is missing');
     const { stdout } = await promisify(execFile)('wine', [path.join(process.env.VORTEX_DOTNET_WIN_ROOT, 'dotnet.exe'), '--list-runtimes'], { env, timeout: 60_000 });
