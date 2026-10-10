@@ -2,7 +2,7 @@
 
 pkgname=vortex-linux
 pkgver=2.8.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Community build of Vortex with generic Linux compatibility patches"
 arch=('x86_64')
 url="https://github.com/Arkazzae/vortex-linux"
@@ -131,6 +131,8 @@ _patches=(
   '0025-linux-new-game-config.patch'
   '0026-linux-tool-file-arguments.patch'
   '0027-linux-release-notifications.patch'
+  '0028-linux-atomic-config-writes.patch'
+  '0029-linux-prefix-config-purge.patch'
 )
 
 source=(
@@ -166,6 +168,8 @@ sha512sums=(
   "$_libloot_sha512"
   # All following local files are versioned together with this PKGBUILD, so
   # hashing them only duplicates Git integrity.
+  'SKIP'
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
